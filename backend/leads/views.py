@@ -69,7 +69,7 @@ class LeadViewSet(viewsets.ModelViewSet):
     @action(detail=True,methods=["post"])
     def analyze(self,request,pk=None):
         lead=self.get_object(); data=analyze_lead(lead); analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data)
-        if analysis.relevant and lead.status=="new": lead.status="qualified"; lead.save(update_fields=["status","updated_at"])
+        if analysis.relevant and analysis.match_score >= settings.QUALIFICATION_MIN_SCORE and lead.status=="new": lead.status="qualified"; lead.save(update_fields=["status","updated_at"])
         ActivityLog.objects.create(lead=lead,event_type="lead.analyzed",message=f"Lead analyzed with score {analysis.match_score}.",metadata={"model":analysis.model,"match_score":analysis.match_score})
         return Response(LeadSerializer(lead).data)
     @action(detail=True,methods=["post"])
