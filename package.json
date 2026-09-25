@@ -1,0 +1,14 @@
+{
+  "name": "ai-freelance-client-acquisition-agent",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "concurrently \"python backend/manage.py runserver 127.0.0.1:8000\" \"npm --prefix frontend run dev\"",
+    "dev:backend": "python backend/manage.py runserver 127.0.0.1:8000",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}
