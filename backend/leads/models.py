@@ -50,12 +50,14 @@ class Outreach(models.Model):
     created_at=models.DateTimeField(auto_now_add=True)
 
 class FollowUp(models.Model):
+    STATUS=[("draft","Draft"),("approved","Approved"),("sent","Sent"),("cancelled","Cancelled")]
     lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="followups")
     scheduled_at=models.DateTimeField()
     message=models.TextField()
-    status=models.CharField(max_length=20,default="draft")
+    status=models.CharField(max_length=20,choices=STATUS,default="draft")
     approved_at=models.DateTimeField(null=True,blank=True)
     sent_at=models.DateTimeField(null=True,blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
 
 class ActivityLog(models.Model):
     lead=models.ForeignKey(Lead,on_delete=models.CASCADE,null=True,blank=True,related_name="activity")
