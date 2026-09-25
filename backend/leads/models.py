@@ -4,6 +4,8 @@ class Lead(models.Model):
     STATUS=[("new","New"),("qualified","Qualified"),("proposal","Proposal"),("contacted","Contacted"),("replied","Replied"),("won","Won"),("lost","Lost"),("archived","Archived")]
     TYPE=[("freelance","Freelance"),("direct","Direct"),("startup","Startup"),("other","Other")]
     title=models.CharField(max_length=255)
+    normalized_title=models.CharField(max_length=255,blank=True,db_index=True)
+    normalized_url=models.CharField(max_length=500,blank=True,db_index=True)
     company=models.CharField(max_length=255,blank=True)
     description=models.TextField()
     source=models.CharField(max_length=100,default="mock")
