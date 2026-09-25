@@ -35,7 +35,7 @@ def qualify_new_leads(request):
         data = analyze_lead(lead)
         analysis, _ = LeadAnalysis.objects.update_or_create(lead=lead, defaults=data)
         analyzed += 1
-        if analysis.relevant:
+        if analysis.relevant and analysis.match_score >= settings.QUALIFICATION_MIN_SCORE:
             lead.status = "qualified"
             lead.save(update_fields=["status", "updated_at"])
             qualified += 1
@@ -43,12 +43,13 @@ def qualify_new_leads(request):
                 lead=lead,
                 event_type="lead.auto_qualified",
                 message=f"Lead auto-qualified with score {analysis.match_score}.",
-                metadata={"model": analysis.model, "match_score": analysis.match_score},
+                metadata={"model": analysis.model, "match_score": analysis.match_score, "threshold": settings.QUALIFICATION_MIN_SCORE},
             )
     return Response({
         "status": "success",
         "analyzed": analyzed,
         "qualified": qualified,
+        "threshold": settings.QUALIFICATION_MIN_SCORE,
         "remaining_new": Lead.objects.filter(status="new").count(),
     })
 
