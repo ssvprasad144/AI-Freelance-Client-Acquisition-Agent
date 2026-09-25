@@ -69,6 +69,12 @@ def qualify_new_leads(request):
     })
 
 
+@api_view(["GET"])
+def qualified_leads(request):
+    now=timezone.now()
+    qs=Lead.objects.filter(status__in=["qualified","proposal"]).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).order_by("-updated_at")[:100]
+    return Response(LeadSerializer(qs,many=True).data)
+
 @api_view(["POST"])
 def run_discovery(request):
     query=str(request.data.get("query") or settings.DEFAULT_DISCOVERY_QUERY).strip(); source=str(request.data.get("source") or "live").lower()
