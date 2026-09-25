@@ -26,6 +26,34 @@ def _store(items):
     return created,duplicates,invalid
 
 @api_view(["POST"])
+def qualify_new_leads(request):
+    limit = min(max(int(request.data.get("limit", 20)), 1), 50)
+    leads = list(Lead.objects.filter(status="new").order_by("-discovered_at", "-created_at")[:limit])
+    qualified = 0
+    analyzed = 0
+    for lead in leads:
+        data = analyze_lead(lead)
+        analysis, _ = LeadAnalysis.objects.update_or_create(lead=lead, defaults=data)
+        analyzed += 1
+        if analysis.relevant:
+            lead.status = "qualified"
+            lead.save(update_fields=["status", "updated_at"])
+            qualified += 1
+            ActivityLog.objects.create(
+                lead=lead,
+                event_type="lead.auto_qualified",
+                message=f"Lead auto-qualified with score {analysis.match_score}.",
+                metadata={"model": analysis.model, "match_score": analysis.match_score},
+            )
+    return Response({
+        "status": "success",
+        "analyzed": analyzed,
+        "qualified": qualified,
+        "remaining_new": Lead.objects.filter(status="new").count(),
+    })
+
+
+@api_view(["POST"])
 def run_discovery(request):
     query=str(request.data.get("query") or settings.DEFAULT_DISCOVERY_QUERY).strip(); source=str(request.data.get("source") or "live").lower()
     try: result=DiscoveryService().discover(query,source)
