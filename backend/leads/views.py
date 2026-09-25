@@ -3,6 +3,8 @@ from django.db import transaction, models
 from django.http import JsonResponse
 from django.utils import timezone
 from datetime import timedelta
+from urllib.parse import urlsplit, urlunsplit
+import re
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
@@ -13,6 +15,18 @@ from .discovery.service import DiscoveryService
 from .discovery.mock_provider import DiscoveryError
 from .discovery.live_provider import LiveDiscoveryError
 
+def _normalize_title(value):
+    return re.sub(r"\\s+", " ", re.sub(r"[^a-z0-9 ]", " ", str(value).lower())).strip()
+
+def _normalize_url(value):
+    try:
+        parts=urlsplit(str(value).strip())
+        host=parts.netloc.lower().removeprefix("www.")
+        path=parts.path.rstrip("/")
+        return urlunsplit(("",host,path,"",""))
+    except Exception:
+        return str(value).strip().lower().rstrip("/")
+
 def health(request): return JsonResponse({"status":"ok","service":"ai-freelance-client-acquisition-agent","discovery":"web_search"})
 
 def _store(items):
@@ -20,10 +34,10 @@ def _store(items):
     with transaction.atomic():
         for item in items:
             if not item.get("title") or not item.get("description") or not item.get("source_url"): invalid+=1; continue
-            source=item.get("source") or "web_search"; url=item.get("source_url")
-            if Lead.objects.filter(source=source,source_url=url).exists(): duplicates+=1; continue
-            if Lead.objects.filter(source=source,title=item.get("title",""),company=item.get("company","" )).exists(): duplicates+=1; continue
-            Lead.objects.create(title=item["title"],company=item.get("company",""),description=item["description"],source=source,source_url=url,lead_type=item.get("lead_type","freelance"),budget_text=item.get("budget_text",""),technologies=item.get("technologies") or [],contact_info=item.get("contact_info") or {},discovered_at=timezone.now(),posted_at=item.get("posted_at") or None,expires_at=item.get("expires_at") or None,last_verified_at=timezone.now()); created+=1
+            source=item.get("source") or "web_search"; url=item.get("source_url"); normalized_url=_normalize_url(url); normalized_title=_normalize_title(item.get("title",""))
+            if Lead.objects.filter(normalized_url=normalized_url).exists(): duplicates+=1; continue
+            if Lead.objects.filter(normalized_title=normalized_title,company__iexact=item.get("company","")).exists(): duplicates+=1; continue
+            Lead.objects.create(title=item["title"],normalized_title=normalized_title,normalized_url=normalized_url,company=item.get("company",""),description=item["description"],source=source,source_url=url,lead_type=item.get("lead_type","freelance"),budget_text=item.get("budget_text",""),technologies=item.get("technologies") or [],contact_info=item.get("contact_info") or {},discovered_at=timezone.now(),posted_at=item.get("posted_at") or None,expires_at=item.get("expires_at") or None,last_verified_at=timezone.now()); created+=1
     return created,duplicates,invalid
 
 @api_view(["POST"])
