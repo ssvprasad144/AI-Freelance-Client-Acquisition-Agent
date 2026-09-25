@@ -1,7 +1,8 @@
 from django.conf import settings
-from django.db import transaction
+from django.db import transaction, models
 from django.http import JsonResponse
 from django.utils import timezone
+from datetime import timedelta
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
@@ -22,7 +23,7 @@ def _store(items):
             source=item.get("source") or "web_search"; url=item.get("source_url")
             if Lead.objects.filter(source=source,source_url=url).exists(): duplicates+=1; continue
             if Lead.objects.filter(source=source,title=item.get("title",""),company=item.get("company","" )).exists(): duplicates+=1; continue
-            Lead.objects.create(title=item["title"],company=item.get("company",""),description=item["description"],source=source,source_url=url,lead_type=item.get("lead_type","freelance"),budget_text=item.get("budget_text",""),technologies=item.get("technologies") or [],contact_info=item.get("contact_info") or {},discovered_at=timezone.now()); created+=1
+            Lead.objects.create(title=item["title"],company=item.get("company",""),description=item["description"],source=source,source_url=url,lead_type=item.get("lead_type","freelance"),budget_text=item.get("budget_text",""),technologies=item.get("technologies") or [],contact_info=item.get("contact_info") or {},discovered_at=timezone.now(),posted_at=item.get("posted_at") or None,expires_at=item.get("expires_at") or None,last_verified_at=timezone.now()); created+=1
     return created,duplicates,invalid
 
 @api_view(["POST"])
@@ -88,5 +89,8 @@ class LeadViewSet(viewsets.ModelViewSet):
         ActivityLog.objects.create(lead=lead,event_type="proposal.generated",message="Proposal draft generated. No message was sent.",metadata={"outreach_id":outreach.id})
         return Response({"outreach_id":outreach.id,"status":outreach.status,"message":outreach.message})
 
-def dashboard(request): return JsonResponse({"opportunities":Lead.objects.exclude(status="archived").count(),"qualified":Lead.objects.filter(status="qualified").count(),"proposals":Lead.objects.filter(status="proposal").count(),"replies":Lead.objects.filter(status="replied").count(),"high_match":LeadAnalysis.objects.filter(match_score__gte=80).count()})
+def dashboard(request):
+    now=timezone.now()
+    active=Lead.objects.exclude(status="archived").filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now))
+    return JsonResponse({"opportunities":active.count(),"qualified":Lead.objects.filter(status="qualified").count(),"proposals":Lead.objects.filter(status="proposal").count(),"replies":Lead.objects.filter(status="replied").count(),"high_match":LeadAnalysis.objects.filter(match_score__gte=80).count()})
 def activity(request): return JsonResponse({"items":ActivityLogSerializer(ActivityLog.objects.all()[:50],many=True).data})
