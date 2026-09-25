@@ -72,6 +72,15 @@ class LeadViewSet(viewsets.ModelViewSet):
         ActivityLog.objects.create(lead=lead,event_type="lead.analyzed",message=f"Lead analyzed with score {analysis.match_score}.",metadata={"model":analysis.model,"match_score":analysis.match_score})
         return Response(LeadSerializer(lead).data)
     @action(detail=True,methods=["post"])
+    def approve_proposal(self,request,pk=None):
+        lead=self.get_object(); outreach=lead.outreach.filter(status="draft").order_by("-created_at").first()
+        if not outreach:
+            return Response({"detail":"Generate a proposal draft first."},status=status.HTTP_400_BAD_REQUEST)
+        outreach.status="approved"; outreach.approved_at=timezone.now(); outreach.save(update_fields=["status","approved_at"])
+        ActivityLog.objects.create(lead=lead,event_type="proposal.approved",message="Proposal approved by user. No message was sent.",metadata={"outreach_id":outreach.id})
+        return Response({"outreach_id":outreach.id,"status":outreach.status,"sent":False,"message":outreach.message})
+
+    @action(detail=True,methods=["post"])
     def proposal(self,request,pk=None):
         lead=self.get_object(); analysis=getattr(lead,"analysis",None)
         if not analysis:return Response({"detail":"Analyze the lead first."},status=status.HTTP_400_BAD_REQUEST)
