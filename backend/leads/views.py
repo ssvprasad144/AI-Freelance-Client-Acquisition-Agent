@@ -87,6 +87,15 @@ def qualified_leads(request):
     return Response(LeadSerializer(qs,many=True).data)
 
 @api_view(["POST"])
+def approve_followup(request,pk):
+    try: followup=FollowUp.objects.get(pk=pk)
+    except FollowUp.DoesNotExist: return Response({"detail":"Follow-up not found."},status=status.HTTP_404_NOT_FOUND)
+    if followup.status!="draft": return Response({"detail":"Follow-up is not in draft state."},status=status.HTTP_400_BAD_REQUEST)
+    followup.status="approved"; followup.approved_at=timezone.now(); followup.save(update_fields=["status","approved_at"])
+    ActivityLog.objects.create(lead=followup.lead,event_type="followup.approved",message="Follow-up approved by user. No message was sent.",metadata={"followup_id":followup.id})
+    return Response({**FollowUpSerializer(followup).data,"sent":False})
+
+@api_view(["POST"])
 def run_discovery(request):
     query=str(request.data.get("query") or settings.DEFAULT_DISCOVERY_QUERY).strip(); source=str(request.data.get("source") or "live").lower()
     try: result=DiscoveryService().discover(query,source)
