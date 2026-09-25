@@ -9,8 +9,8 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from .ai_service import analyze_lead, generate_proposal
-from .models import ActivityLog, Lead, LeadAnalysis, Outreach, FollowUp
-from .serializers import ActivityLogSerializer, LeadSerializer
+from .models import ActivityLog, Lead, LeadAnalysis, Outreach, FollowUp, FollowUp
+from .serializers import ActivityLogSerializer, LeadSerializer, FollowUpSerializer
 from .discovery.service import DiscoveryService
 from .discovery.mock_provider import DiscoveryError
 from .discovery.live_provider import LiveDiscoveryError
