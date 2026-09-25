@@ -9,7 +9,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from .ai_service import analyze_lead, generate_proposal
-from .models import ActivityLog, Lead, LeadAnalysis, Outreach
+from .models import ActivityLog, Lead, LeadAnalysis, Outreach, FollowUp
 from .serializers import ActivityLogSerializer, LeadSerializer
 from .discovery.service import DiscoveryService
 from .discovery.mock_provider import DiscoveryError
@@ -68,6 +68,17 @@ def qualify_new_leads(request):
         "remaining_new": Lead.objects.filter(status="new").count(),
     })
 
+
+@api_view(["POST"])
+def create_followup(request, pk):
+    lead=Lead.objects.get(pk=pk)
+    scheduled_at=request.data.get("scheduled_at")
+    message=str(request.data.get("message") or "").strip()
+    if not scheduled_at or not message:
+        return Response({"detail":"scheduled_at and message are required."},status=status.HTTP_400_BAD_REQUEST)
+    followup=FollowUp.objects.create(lead=lead,scheduled_at=scheduled_at,message=message,status="draft")
+    ActivityLog.objects.create(lead=lead,event_type="followup.created",message="Follow-up draft created. No message was sent.",metadata={"followup_id":followup.id})
+    return Response({"id":followup.id,"status":followup.status,"scheduled_at":followup.scheduled_at,"message":followup.message})
 
 @api_view(["GET"])
 def qualified_leads(request):
