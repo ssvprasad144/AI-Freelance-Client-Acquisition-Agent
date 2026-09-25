@@ -1,29 +1,21 @@
 # AI Freelance Client Acquisition Agent
 
-Local-first AI-assisted lead discovery, qualification, proposal drafting, follow-up, and outreach management for SSVPrasad.
+Production-oriented AI-assisted freelance opportunity discovery, qualification, proposal drafting, follow-up and outreach management.
 
-## V1
-- Mock-first development
-- Human approval before outreach
-- Optional GPT-4o-mini
-- No fabricated experience or outcomes
-- Permitted APIs/public sources only
+## Live discovery
+The primary discovery path uses the OpenAI Responses API with its hosted `web_search` tool to find current publicly available opportunities. Results are normalized into the existing Lead model and deduplicated before storage.
 
-## Local setup
+## Outreach safety
+No login bypass or unauthorized scraping. Outbound communication remains a human-approved draft workflow.
 
-Backend:
-```bash
-cd backend
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver
+## API
+POST `/api/discovery/run/`
+```json
+{"query":"AI automation Django React freelance","source":"live"}
 ```
+Use `source":"mock"` for regression tests.
 
-Frontend:
-```bash
-cd frontend
-npm install
-npm run dev
-```
+## Production flow
+Live Web Search → Lead Extraction → Deduplication → PostgreSQL → AI Qualification → Proposal Draft → Human Approval → Outreach/Follow-up.
+
+Keep `OPENAI_API_KEY` server-side.
