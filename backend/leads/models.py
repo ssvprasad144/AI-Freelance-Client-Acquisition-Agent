@@ -14,6 +14,9 @@ class Lead(models.Model):
     contact_info=models.JSONField(default=dict,blank=True)
     status=models.CharField(max_length=30,choices=STATUS,default="new")
     discovered_at=models.DateTimeField(null=True,blank=True)
+    posted_at=models.DateTimeField(null=True,blank=True)
+    expires_at=models.DateTimeField(null=True,blank=True)
+    last_verified_at=models.DateTimeField(null=True,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)
     updated_at=models.DateTimeField(auto_now=True)
     class Meta:
