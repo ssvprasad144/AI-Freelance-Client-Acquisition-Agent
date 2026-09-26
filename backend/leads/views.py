@@ -204,6 +204,7 @@ def send_outreach(request,pk):
         ActivityLog.objects.create(lead=outreach.lead,event_type="outreach.error",message="Configured outreach provider failed.",metadata={"outreach_id":outreach.id,"error":str(exc)})
         return Response({"detail":"Outbound provider failed.","sent":False},status=502)
 
+@api_view(["GET"])
 def dashboard(request):
     now=timezone.now(); active=Lead.objects.exclude(status="archived").filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)); last=ActivityLog.objects.filter(event_type="discovery.completed").order_by("-created_at").first()
     return JsonResponse({"opportunities":active.count(),"qualified":Lead.objects.filter(status="qualified").count(),"proposals":Lead.objects.filter(status="proposal").count(),"replies":Lead.objects.filter(status="replied").count(),"high_match":LeadAnalysis.objects.filter(match_score__gte=80).count(),"followups_pending":FollowUp.objects.filter(status="draft").count(),"followups_upcoming":FollowUp.objects.filter(status="approved",scheduled_at__gt=now).count(),"followups_due":FollowUp.objects.filter(status="due").count(),"last_discovery_at":last.created_at if last else None,"last_discovery":last.metadata if last else None})
