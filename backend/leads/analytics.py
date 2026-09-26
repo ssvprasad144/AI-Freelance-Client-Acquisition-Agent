@@ -17,4 +17,9 @@ def acquisition_metrics():
     for row in strategy_stats:
         searches=row["searches"] or 0; q=row["qualified"] or 0; created=row["created"] or 0; replies=row["replied"] or 0; wins=row["won"] or 0
         strategy_learning.append({**row,"qualified_per_search":round(q/searches,3) if searches else 0,"created_per_search":round(created/searches,3) if searches else 0,"reply_per_search":round(replies/searches,3) if searches else 0,"win_per_search":round(wins/searches,3) if searches else 0,"qualification_from_created_pct":rate(q,created)})
+    strategy_stats=DiscoverySearchStat.objects.values("strategy_id").annotate(searches=Count("id"),raw_results=Sum("raw_results"),created=Sum("newly_created_leads"),qualified=Sum("qualified"),replied=Sum("replied"),won=Sum("won")).order_by("-qualified")
+    strategy_learning=[]
+    for row in strategy_stats:
+        searches=row["searches"] or 0; created=row["created"] or 0; q=row["qualified"] or 0; replies=row["replied"] or 0; wins=row["won"] or 0
+        strategy_learning.append({**row,"qualified_per_search":round(q/searches,3) if searches else 0,"created_per_search":round(created/searches,3) if searches else 0,"reply_per_search":round(replies/searches,3) if searches else 0,"win_per_search":round(wins/searches,3) if searches else 0,"qualification_from_created_pct":rate(q,created)})
     return {"funnel":{"discovered":total,"qualified":qualified,"proposals":proposals,"approved":approved,"sent":sent,"replied":replied,"won":won,"lost":lost},"rates":{"qualification_rate":rate(qualified,total),"proposal_rate":rate(proposals,qualified),"approval_rate":rate(approved,proposals),"send_rate":rate(sent,approved),"reply_rate":rate(replied,sent),"win_rate":rate(won,replied)},"sources":list(source_rows),"lead_types":list(service_rows),"search_learning":search_learning,"strategy_learning":strategy_learning,"generated_at":timezone.now()}
