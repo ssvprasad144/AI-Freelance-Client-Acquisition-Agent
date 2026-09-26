@@ -8,23 +8,7 @@ STOP_STATUSES={"replied","won","lost","archived"}
 def choose_channel(lead):
     medium=(lead.outreach.order_by("-created_at").values_list("medium",flat=True).first() or "").lower()
     if medium in CHANNELS:return medium
-    if (lead.contact_info or {}).get("email"):return "email"
-    return "marketplace" if lead.action_url else "manual"
-
-def personalized_message(lead,channel,variant="A"):
-    intelligence=getattr(lead.client,"intelligence",None) if lead.client_id else None
-    style=intelligence.communication_style if intelligence else ""
-    approach=intelligence.recommended_approach if intelligence else ""
-    intro=f"Hi {(lead.contact_info or {}).get('name') or 'there'},"
-    value=f"I can help with {lead.title.lower()} using a practical Django/React and AI automation approach."
-    proof=" I’ve built AI interview, automation, and full-stack products with Django, React and PostgreSQL."
-    ask=" If this is still active, I’d be happy to discuss the scope and next steps."
-    if variant=="B": value=f"Your {lead.title.lower()} looks like a strong fit for an AI-assisted implementation."
-    if approach:value+=f" {approach[:220]}"
-    if style and "concise" in style.lower(): ask=" Open to a short discussion this week?"
-    return "
-
-".join([intro,value+proof,ask])
+    if (lead.contact_info or {}).get("email"):    return "\n\n".join([intro, value + proof, ask])
 
 def create_plan(lead,channel=None,variant="A"):
     if not eligible(lead): raise ValueError("Outreach is blocked because this lead has replied, has a meeting, or is terminal.")
