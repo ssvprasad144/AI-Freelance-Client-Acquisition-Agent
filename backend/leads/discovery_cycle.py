@@ -89,8 +89,10 @@ def _refresh_domain_outcomes(items):
 
 def _find_semantic_reuse(query,profile_id,strategy_id):
     cache=reusable_cache(query,profile_id=profile_id)
-    if cache and cache.query_family.endswith(f":{strategy_id}") and query_similarity(query,cache.query)>=settings.DISCOVERY_SEMANTIC_REUSE_THRESHOLD:
-        return cache
+    if cache and cache.query_family.endswith(f":{strategy_id}"):
+        similarity=query_similarity(query,cache.query)
+        if similarity>=settings.DISCOVERY_SEMANTIC_REUSE_THRESHOLD or (similarity>=0.5 and cache.profile_id==profile_id):
+            return cache
     return None
 
 def _payload(query,profile_id,**extra):
