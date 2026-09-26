@@ -77,6 +77,11 @@ class AcquisitionOpportunitySerializer(serializers.ModelSerializer):
     class Meta: model=AcquisitionOpportunity; fields="__all__"
 
 
-class OutreachPlanSerializer(serializers.ModelSerializer):
+class OutreachPlan,RevenueRecordSerializer(serializers.ModelSerializer):
     lead_title=serializers.CharField(source="lead.title",read_only=True)
     class Meta: model=OutreachPlan; fields="__all__"
+
+
+class RevenueRecordSerializer(serializers.ModelSerializer):
+    lead_title=serializers.CharField(source="lead.title",read_only=True)
+    class Meta: model=RevenueRecord; fields="__all__"
