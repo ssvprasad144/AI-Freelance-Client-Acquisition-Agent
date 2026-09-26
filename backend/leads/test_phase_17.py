@@ -2,7 +2,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from .models import Lead, OutreachPlan
-from .outreach_intelligence import create_plan, eligible, mark_approved
+from .outreach_intelligence import create_plan, eligible, mark_approved, record_attempt_for_outreach
 
 class Phase17Tests(TestCase):
     """Regression coverage for safe, context-aware multichannel outreach (CI)."""
@@ -28,6 +28,24 @@ class Phase17Tests(TestCase):
         regenerated=create_plan(self.lead,"email","A")
         self.assertEqual(regenerated.status,"approved")
         self.assertEqual(regenerated.attempt_count,1)
+
+
+    def test_approval_does_not_consume_attempt(self):
+        plan=create_plan(self.lead,"email","A")
+        mark_approved(plan)
+        plan.refresh_from_db()
+        self.assertEqual(plan.attempt_count,0)
+        self.assertIsNone(plan.last_attempt_at)
+
+    def test_delivery_records_one_attempt(self):
+        plan=create_plan(self.lead,"email","A")
+        mark_approved(plan)
+        record_attempt_for_outreach(plan)
+        plan.refresh_from_db()
+        self.assertEqual(plan.attempt_count,1)
+        self.assertIsNotNone(plan.last_attempt_at)
+        self.assertEqual(plan.status,"sent")
+        self.assertIsNotNone(plan.sent_at)
 
     def test_manual_channel_never_marked_automatic(self):
         plan=create_plan(self.lead,"linkedin","B")
