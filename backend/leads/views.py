@@ -27,10 +27,11 @@ from .client_service import sync_lead_client, record_message, generate_client_in
 from .meeting_service import sync_meeting_context, apply_meeting_status
 from .learning import log_acquisition_event, refresh_learning
 from .acquisition_orchestrator import build_queue, ensure_opportunity, execute_action, recalculate_opportunities
+from .outreach_intelligence import build_outreach_plans, create_plan, channel_metrics, mark_approved
 from .analytics import acquisition_metrics
-from .models import ActivityLog, FollowUp, FollowUpSequence, Lead, LeadAnalysis, Outreach, Proposal, Reply, Client, Contact, Conversation, Meeting, AcquisitionEvent, LearningStat, AcquisitionOpportunity
+from .models import ActivityLog, FollowUp, FollowUpSequence, Lead, LeadAnalysis, Outreach, Proposal, Reply, Client, Contact, Conversation, Meeting, AcquisitionEvent, LearningStat, AcquisitionOpportunity, OutreachPlan
 from .pagination import StandardPagination
-from .serializers import ActivityLogSerializer, FollowUpSerializer, FollowUpSequenceSerializer, LeadSerializer, ReplySerializer, OutreachSerializer, ProposalSerializer, ClientSerializer, ContactSerializer, ConversationSerializer, MeetingSerializer, AcquisitionEventSerializer, LearningStatSerializer, ClientIntelligenceSerializer, AcquisitionOpportunitySerializer
+from .serializers import ActivityLogSerializer, FollowUpSerializer, FollowUpSequenceSerializer, LeadSerializer, ReplySerializer, OutreachSerializer, ProposalSerializer, ClientSerializer, ContactSerializer, ConversationSerializer, MeetingSerializer, AcquisitionEventSerializer, LearningStatSerializer, ClientIntelligenceSerializer, AcquisitionOpportunitySerializer, OutreachPlanSerializer
 
 def _normalize_title(value): return re.sub(r"\s+"," ",re.sub(r"[^a-z0-9 ]"," ",str(value).lower())).strip()
 def _normalize_url(value):
@@ -457,3 +458,23 @@ def acquisition_action(request,pk):
 
 @api_view(["POST"])
 def acquisition_recalculate(request): return Response(recalculate_opportunities())
+
+
+@api_view(["GET"])
+def outreach_strategy(request):
+    return Response({"plans":OutreachPlanSerializer(build_outreach_plans(50),many=True).data,"channels":channel_metrics()})
+
+@api_view(["POST"])
+def outreach_plan(request):
+    try: lead=Lead.objects.get(pk=request.data.get("lead_id"))
+    except Lead.DoesNotExist:return Response({"detail":"Lead not found."},status=404)
+    try: plan=create_plan(lead,str(request.data.get("channel") or "") or None,str(request.data.get("variant") or "A"))
+    except ValueError as exc:return Response({"detail":str(exc)},status=400)
+    return Response(OutreachPlanSerializer(plan).data,status=201)
+
+@api_view(["POST"])
+def approve_outreach_plan(request,pk):
+    try: plan=OutreachPlan.objects.select_related("lead").get(pk=pk)
+    except OutreachPlan.DoesNotExist:return Response({"detail":"Outreach plan not found."},status=404)
+    try: return Response(OutreachPlanSerializer(mark_approved(plan)).data)
+    except ValueError as exc:return Response({"detail":str(exc)},status=400)
