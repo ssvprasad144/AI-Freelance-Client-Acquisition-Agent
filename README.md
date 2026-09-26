@@ -106,3 +106,18 @@ Frontend:
     npm run build
 
 GitHub Actions runs both backend tests and the frontend production build on pushes and pull requests to main.
+
+
+## Client acquisition engine
+
+The acquisition layer now includes:
+- four discovery profiles covering AI/automation, Django/full-stack, interactive web and startup MVP opportunities
+- automated multi-profile discovery worker
+- evidence-based proposal personalization using the actual profile/project knowledge
+- reply intent/sentiment classification with a deterministic fallback when AI is unavailable
+- acquisition funnel analytics at `/api/analytics/`
+- source and lead-type conversion breakdowns
+- guarded email outreach at `/api/outreach/<id>/send/`
+- explicit `OUTREACH_ENABLED=false` safety default
+- manual approval before any outreach can be sent
+- no automatic platform messaging or unauthorized scraping
