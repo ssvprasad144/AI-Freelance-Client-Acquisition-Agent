@@ -31,6 +31,12 @@ services:
         value: "4"
       - key: DISCOVERY_TARGET_QUALIFIED_LEADS
         value: "10"
+      - key: DISCOVERY_MIN_EXPLORATION_SEARCHES
+        value: "2"
+      - key: DISCOVERY_LEARNING_LOOKBACK_DAYS
+        value: "30"
+      - key: CRAWLER_MAX_LEADS_PER_CYCLE
+        value: "5"
       - key: LOCAL_PREFILTER_MIN_SCORE
         value: "40"
       - key: CRAWLER_MIN_LEAD_SCORE
@@ -83,6 +89,12 @@ services:
         value: "4"
       - key: DISCOVERY_TARGET_QUALIFIED_LEADS
         value: "10"
+      - key: DISCOVERY_MIN_EXPLORATION_SEARCHES
+        value: "2"
+      - key: DISCOVERY_LEARNING_LOOKBACK_DAYS
+        value: "30"
+      - key: CRAWLER_MAX_LEADS_PER_CYCLE
+        value: "5"
       - key: LOCAL_PREFILTER_MIN_SCORE
         value: "40"
       - key: CRAWLER_MIN_LEAD_SCORE
@@ -135,6 +147,12 @@ services:
         value: "4"
       - key: DISCOVERY_TARGET_QUALIFIED_LEADS
         value: "10"
+      - key: DISCOVERY_MIN_EXPLORATION_SEARCHES
+        value: "2"
+      - key: DISCOVERY_LEARNING_LOOKBACK_DAYS
+        value: "30"
+      - key: CRAWLER_MAX_LEADS_PER_CYCLE
+        value: "5"
       - key: LOCAL_PREFILTER_MIN_SCORE
         value: "40"
       - key: CRAWLER_MIN_LEAD_SCORE
