@@ -281,7 +281,7 @@ def cancel_followup_sequence(request, pk):
     FollowUp.objects.filter(sequence=sequence,status__in=["draft","approved","due"]).update(status="cancelled")
     return Response(FollowUpSequenceSerializer(sequence).data)
 
-def discovery_profiles(request):
+@api_view(["GET"])\ndef discovery_profiles(request):
     return Response({"profiles":public_profiles(),"strategy_performance":strategy_performance()})
 
 @api_view(["GET"])
