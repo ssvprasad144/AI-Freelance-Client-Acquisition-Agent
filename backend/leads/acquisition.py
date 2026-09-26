@@ -61,3 +61,25 @@ def send_email(outreach):
     lead.status="contacted"; lead.save(update_fields=["status","updated_at"])
     ActivityLog.objects.create(lead=lead,event_type="outreach.sent",message="Approved outreach sent through configured email provider.",metadata={"outreach_id":outreach.id,"channel":outreach.channel})
     return {"sent":True,"outreach_id":outreach.id}
+
+
+def send_followup(followup):
+    if followup.status!="due":
+        raise ValueError("Only due follow-ups can be sent.")
+    recipient=(followup.lead.contact_info or {}).get("email")
+    if not recipient:
+        raise ValueError("Lead has no verified email contact.")
+    if not getattr(settings,"OUTREACH_ENABLED",False):
+        raise ValueError("Outbound sending is disabled. Enable it explicitly after configuring email.")
+    message=EmailMessage()
+    message["Subject"]=f"Following up: {followup.lead.title}"
+    message["From"]=settings.OUTREACH_FROM_EMAIL
+    message["To"]=recipient
+    message.set_content(followup.message)
+    with smtplib.SMTP(settings.SMTP_HOST,settings.SMTP_PORT,timeout=20) as server:
+        if settings.SMTP_USE_TLS: server.starttls()
+        if settings.SMTP_USERNAME: server.login(settings.SMTP_USERNAME,settings.SMTP_PASSWORD)
+        server.send_message(message)
+    followup.status="sent"; followup.sent_at=timezone.now(); followup.save(update_fields=["status","sent_at"])
+    ActivityLog.objects.create(lead=followup.lead,event_type="followup.sent",message="Approved due follow-up sent through configured email provider.",metadata={"followup_id":followup.id})
+    return {"sent":True,"followup_id":followup.id}
