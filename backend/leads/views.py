@@ -28,7 +28,7 @@ from .meeting_service import sync_meeting_context, apply_meeting_status
 from .learning import log_acquisition_event, refresh_learning
 from .acquisition_orchestrator import build_queue, ensure_opportunity, execute_action, recalculate_opportunities
 from .outreach_intelligence import build_outreach_plans, create_plan, channel_metrics, mark_approved
-from .revenue_intelligence import upsert_revenue, revenue_metrics, optimization_report
+from .revenue_intelligence import upsert_revenue, revenue_metrics, optimization_report, refresh_revenue_learning
 from .analytics import acquisition_metrics
 from .models import ActivityLog, FollowUp, FollowUpSequence, Lead, LeadAnalysis, Outreach, Proposal, Reply, Client, Contact, Conversation, Meeting, AcquisitionEvent, LearningStat, AcquisitionOpportunity, OutreachPlan, RevenueRecord
 from .pagination import StandardPagination
@@ -431,12 +431,12 @@ def acquisition_events(request):
 
 @api_view(["GET"])
 def learning(request):
-    refresh_learning()
+    refresh_learning(); refresh_revenue_learning()
     return Response({"stats":LearningStatSerializer(LearningStat.objects.all()[:100],many=True).data})
 
 @api_view(["POST"])
 def refresh_learning_view(request):
-    stats=refresh_learning()
+    stats=refresh_learning(); refresh_revenue_learning()
     return Response({"refreshed":len(stats),"stats":stats[:100]})
 
 
@@ -483,7 +483,7 @@ def approve_outreach_plan(request,pk):
 
 
 @api_view(["GET"])
-def revenue_dashboard(request): return Response({**revenue_metrics(),"optimization":optimization_report()})
+def revenue_dashboard(request): return Response({**refresh_revenue_learning(),"optimization":optimization_report()})
 
 @api_view(["GET"])
 def revenue_records(request): return _paginate(request,RevenueRecord.objects.select_related("lead").all(),RevenueRecordSerializer)
