@@ -142,7 +142,7 @@ class WebSearchCostV2Tests(APITestBase):
         for i in range(8):
             Lead.objects.create(title=f"Fresh Qualified {i}",description="Django project",source_url=f"https://fresh.example/{i}",status="qualified",last_verified_at=timezone.now())
         with patch("leads.discovery_cycle.settings.DISCOVERY_TARGET_QUALIFIED_LEADS",10), patch("leads.discovery_cycle.settings.DISCOVERY_MAX_SEARCHES_PER_DAY",4):
-            ActivityLog.objects.create(event_type="discovery.search",message="prior",metadata={})
+            ActivityLog.objects.create(event_type="discovery.search",message="prior",metadata={})\n            ActivityLog.objects.create(event_type="discovery.search",message="prior",metadata={})
             result=__import__("leads.discovery_cycle",fromlist=["run_discovery_cycle"]).run_discovery_cycle(query="Django freelance",profile_id="budget-test")
         self.assertEqual(discover.call_count,0)
         self.assertIn(result["skip_reason"],{"dynamic daily web-search budget exhausted","fresh qualified lead inventory is already healthy"})
