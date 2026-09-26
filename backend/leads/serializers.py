@@ -55,7 +55,8 @@ class ClientSerializer(serializers.ModelSerializer):
     contacts=ContactSerializer(many=True,read_only=True)
     conversations=ConversationSerializer(many=True,read_only=True)
     intelligence=ClientIntelligenceSerializer(read_only=True)
-    lead_count=serializers.IntegerField(source="leads.count",read_only=True)
+    lead_count=serializers.SerializerMethodField()
+    def get_lead_count(self,obj): return obj.leads.count()
     class Meta: model=Client; fields="__all__"
 
 class MeetingSerializer(serializers.ModelSerializer):
