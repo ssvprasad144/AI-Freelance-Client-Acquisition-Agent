@@ -18,13 +18,51 @@ class LeadAnalysis(models.Model):
     recommended_approach=models.TextField(blank=True); matching_projects=models.JSONField(default=list,blank=True); confidence=models.PositiveSmallIntegerField(default=0)
     model=models.CharField(max_length=100,default="mock"); input_tokens=models.PositiveIntegerField(default=0); output_tokens=models.PositiveIntegerField(default=0); created_at=models.DateTimeField(auto_now=True)
 
+class Proposal(models.Model):
+    STATUS=[("draft","Draft"),("approved","Approved"),("archived","Archived")]
+    lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="proposals")
+    status=models.CharField(max_length=20,choices=STATUS,default="draft",db_index=True)
+    current_version=models.PositiveIntegerField(default=1)
+    delivery_medium=models.CharField(max_length=40,blank=True)
+    approved_at=models.DateTimeField(null=True,blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+    updated_at=models.DateTimeField(auto_now=True)
+    class Meta: ordering=["-created_at"]
+
+class ProposalVersion(models.Model):
+    proposal=models.ForeignKey(Proposal,on_delete=models.CASCADE,related_name="versions")
+    version_number=models.PositiveIntegerField()
+    content=models.TextField()
+    source=models.CharField(max_length=20,default="ai")
+    instruction=models.TextField(blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=["proposal","version_number"],name="unique_proposal_version")]
+        ordering=["-version_number"]
+
 class Outreach(models.Model):
-    lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="outreach"); channel=models.CharField(max_length=30,default="email"); medium=models.CharField(max_length=40,default="email",db_index=True); action_type=models.CharField(max_length=50,default="send_email"); message=models.TextField()
+    lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="outreach"); proposal=models.ForeignKey(Proposal,on_delete=models.SET_NULL,null=True,blank=True,related_name="outreach")
+    channel=models.CharField(max_length=30,default="email"); medium=models.CharField(max_length=40,default="email",db_index=True); action_type=models.CharField(max_length=50,default="send_email"); message=models.TextField()
     destination_url=models.URLField(blank=True); status=models.CharField(max_length=20,default="draft"); approved_at=models.DateTimeField(null=True,blank=True); opened_at=models.DateTimeField(null=True,blank=True); submitted_at=models.DateTimeField(null=True,blank=True); sent_at=models.DateTimeField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True)
+
+class FollowUpSequence(models.Model):
+    STATUS=[("active","Active"),("paused","Paused"),("completed","Completed"),("cancelled","Cancelled")]
+    lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="followup_sequences")
+    name=models.CharField(max_length=120,default="Default follow-up")
+    status=models.CharField(max_length=20,choices=STATUS,default="active")
+    max_steps=models.PositiveSmallIntegerField(default=3)
+    stop_on_reply=models.BooleanField(default=True)
+    stop_on_terminal_status=models.BooleanField(default=True)
+    current_step=models.PositiveSmallIntegerField(default=0)
+    delays_days=models.JSONField(default=list,blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+    updated_at=models.DateTimeField(auto_now=True)
 
 class FollowUp(models.Model):
     STATUS=[("draft","Draft"),("approved","Approved"),("due","Due"),("sent","Sent"),("cancelled","Cancelled")]
-    lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="followups"); scheduled_at=models.DateTimeField(); message=models.TextField()
+    lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="followups"); sequence=models.ForeignKey(FollowUpSequence,on_delete=models.SET_NULL,null=True,blank=True,related_name="followups")
+    step_number=models.PositiveSmallIntegerField(default=1)
+    scheduled_at=models.DateTimeField(); message=models.TextField()
     status=models.CharField(max_length=20,default="draft"); approved_at=models.DateTimeField(null=True,blank=True); sent_at=models.DateTimeField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True)
 
 class Reply(models.Model):
@@ -33,6 +71,12 @@ class Reply(models.Model):
     message=models.TextField()
     sentiment=models.CharField(max_length=30,blank=True)
     intent=models.CharField(max_length=50,blank=True)
+    urgency=models.CharField(max_length=20,blank=True)
+    confidence=models.PositiveSmallIntegerField(default=0)
+    extracted_questions=models.JSONField(default=list,blank=True)
+    recommended_action=models.TextField(blank=True)
+    suggested_response=models.TextField(blank=True)
+    next_action=models.CharField(max_length=50,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)
 
 class DiscoveryQueryCache(models.Model):

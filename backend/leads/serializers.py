@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ActivityLog,FollowUp,Lead,LeadAnalysis,Outreach,Reply
+from .models import ActivityLog,FollowUp,FollowUpSequence,Lead,LeadAnalysis,Outreach,Proposal,ProposalVersion,Reply
 
 class LeadAnalysisSerializer(serializers.ModelSerializer):
     class Meta: model=LeadAnalysis; fields="__all__"
@@ -23,3 +23,16 @@ class ReplySerializer(serializers.ModelSerializer):
 
 class ActivityLogSerializer(serializers.ModelSerializer):
     class Meta: model=ActivityLog; fields="__all__"
+
+
+class ProposalVersionSerializer(serializers.ModelSerializer):
+    class Meta: model=ProposalVersion; fields="__all__"
+
+class ProposalSerializer(serializers.ModelSerializer):
+    versions=ProposalVersionSerializer(many=True,read_only=True)
+    lead_title=serializers.CharField(source="lead.title",read_only=True)
+    class Meta: model=Proposal; fields="__all__"
+
+class FollowUpSequenceSerializer(serializers.ModelSerializer):
+    followups=serializers.PrimaryKeyRelatedField(many=True,read_only=True)
+    class Meta: model=FollowUpSequence; fields="__all__"

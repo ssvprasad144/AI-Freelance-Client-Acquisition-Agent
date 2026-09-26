@@ -19,11 +19,14 @@ from .discovery.profiles import public_profiles, strategy_performance
 from .discovery_cycle import run_discovery_cycle
 from .lead_optimizer import local_lead_score, should_ai_qualify, ai_skip_analysis
 from .followup_service import process_due_followups as process_due_followups_service
+from .followup_intelligence import create_sequence, cancel_if_stopped
 from .acquisition import classify_reply, send_email, send_followup as send_followup_email
+from .outreach_adapters import resolve_outreach_destination
+from .proposal_service import create_proposal, current_version, revise_proposal, restore_version
 from .analytics import acquisition_metrics
-from .models import ActivityLog, FollowUp, Lead, LeadAnalysis, Outreach, Reply
+from .models import ActivityLog, FollowUp, FollowUpSequence, Lead, LeadAnalysis, Outreach, Proposal, Reply
 from .pagination import StandardPagination
-from .serializers import ActivityLogSerializer, FollowUpSerializer, LeadSerializer, ReplySerializer, OutreachSerializer
+from .serializers import ActivityLogSerializer, FollowUpSerializer, FollowUpSequenceSerializer, LeadSerializer, ReplySerializer, OutreachSerializer, ProposalSerializer
 
 def _normalize_title(value): return re.sub(r"\s+"," ",re.sub(r"[^a-z0-9 ]"," ",str(value).lower())).strip()
 def _normalize_url(value):
@@ -61,22 +64,8 @@ def me(request): return Response({"id":request.user.id,"username":request.user.u
 
 
 def _proposal_delivery(lead):
-    source = (lead.source or "").lower().replace(" ", "_")
-    action_url = lead.action_url or lead.source_url
-    email = (lead.contact_info or {}).get("email")
-    if any(key in source for key in ("freelancer", "upwork", "fiverr", "peopleperhour", "marketplace")):
-        return {"medium":"marketplace_bid","action_type":"open_bid","action_url":action_url}
-    if "linkedin" in source:
-        return {"medium":"linkedin_dm","action_type":"open_profile","action_url":action_url}
-    if "reddit" in source:
-        return {"medium":"reddit_reply","action_type":"open_post","action_url":action_url}
-    if "github" in source:
-        return {"medium":"github_response","action_type":"open_issue","action_url":action_url}
-    if email:
-        return {"medium":"email","action_type":"send_email","action_url":action_url}
-    if any(key in source for key in ("job", "startup", "career", "wellfound", "indeed")):
-        return {"medium":"job_application","action_type":"open_application","action_url":action_url}
-    return {"medium":"contact_form","action_type":"open_contact_form","action_url":action_url}
+    destination = resolve_outreach_destination(lead)
+    return {"medium": destination.medium, "action_type": destination.action_type, "action_url": destination.url}
 
 def _store(items):
     created=duplicates=invalid=0
@@ -163,11 +152,13 @@ def create_reply(request,pk):
     reply=Reply.objects.create(lead=lead,channel=str(request.data.get("channel") or "email"),message=message,intent="needs_review")
     try:
         classification=classify_reply(reply)
-        reply.sentiment=classification.get("sentiment",""); reply.intent=classification.get("intent",""); reply.save(update_fields=["sentiment","intent"])
+        reply.sentiment=classification.get("sentiment",""); reply.intent=classification.get("intent",""); reply.urgency=classification.get("urgency",""); reply.confidence=int(classification.get("confidence",0) or 0); reply.extracted_questions=classification.get("extracted_questions",[]) or []; reply.recommended_action=classification.get("recommended_action",""); reply.suggested_response=classification.get("suggested_response",""); reply.next_action=classification.get("next_action",""); reply.save(update_fields=["sentiment","intent","urgency","confidence","extracted_questions","recommended_action","suggested_response","next_action"])
     except Exception as exc:
         classification={"recommended_action":"Review reply manually.","error":str(exc)}
     lead.status="replied"; lead.save(update_fields=["status","updated_at"])
-    ActivityLog.objects.create(lead=lead,event_type="lead.reply_received",message="Reply recorded manually.",metadata={"reply_id":reply.id})
+    for sequence in FollowUpSequence.objects.filter(lead=lead,status="active"):
+        cancel_if_stopped(sequence)
+    ActivityLog.objects.create(lead=lead,event_type="lead.reply_received",message="Reply recorded and analyzed manually.",metadata={"reply_id":reply.id})
     return Response({**ReplySerializer(reply).data,"classification":classification},status=201)
 
 class LeadViewSet(viewsets.ModelViewSet):
@@ -184,16 +175,23 @@ class LeadViewSet(viewsets.ModelViewSet):
         if not analysis:return Response({"detail":"Analyze the lead first."},status=400)
         if not (analysis.relevant and analysis.match_score>=settings.QUALIFICATION_MIN_SCORE):
             return Response({"detail":f"Only qualified leads can generate proposals. Required score: {settings.QUALIFICATION_MIN_SCORE}."},status=400)
-        message=generate_proposal(lead,analysis); delivery=_proposal_delivery(lead); outreach=Outreach.objects.create(lead=lead,channel=delivery["medium"],medium=delivery["medium"],action_type=delivery["action_type"],destination_url=delivery["action_url"] or "",message=message,status="draft"); lead.status="proposal"; lead.save(update_fields=["status","updated_at"])
-        ActivityLog.objects.create(lead=lead,event_type="proposal.generated",message="Proposal draft generated. No message was sent.",metadata={"outreach_id":outreach.id})
-        return Response({"outreach_id":outreach.id,"status":"draft","message":message,"medium":outreach.medium,"action_type":outreach.action_type,"destination_url":outreach.destination_url,"lead_source_url":lead.source_url,"can_send":outreach.medium=="email"})
+        delivery=_proposal_delivery(lead)
+        proposal,version=create_proposal(lead,analysis,delivery["medium"])
+        outreach=Outreach.objects.create(lead=lead,proposal=proposal,channel=delivery["medium"],medium=delivery["medium"],action_type=delivery["action_type"],destination_url=delivery["action_url"] or "",message=version.content,status="draft")
+        lead.status="proposal"; lead.save(update_fields=["status","updated_at"])
+        ActivityLog.objects.create(lead=lead,event_type="proposal.generated",message="Versioned proposal draft generated. No message was sent.",metadata={"outreach_id":outreach.id,"proposal_id":proposal.id,"version":version.version_number})
+        return Response({"outreach_id":outreach.id,"proposal_id":proposal.id,"version":version.version_number,"status":"draft","message":version.content,"medium":outreach.medium,"action_type":outreach.action_type,"destination_url":outreach.destination_url,"lead_source_url":lead.source_url,"can_send":outreach.medium=="email"})
     @action(detail=True,methods=["post"])
     def approve_proposal(self,request,pk=None):
         lead=self.get_object(); outreach=lead.outreach.filter(status="draft").order_by("-created_at").first()
         if not outreach:return Response({"detail":"Generate a proposal draft first."},status=400)
-        outreach.status="approved"; outreach.approved_at=timezone.now(); outreach.save(update_fields=["status","approved_at"])
-        ActivityLog.objects.create(lead=lead,event_type="proposal.approved",message="Proposal approved by user. No message was sent.",metadata={"outreach_id":outreach.id})
-        return Response({"outreach_id":outreach.id,"status":"approved","sent":False,"message":outreach.message,"medium":outreach.medium,"action_type":outreach.action_type,"destination_url":outreach.destination_url,"can_send":outreach.medium=="email"})
+        if outreach.proposal_id:
+            proposal=outreach.proposal; proposal.status="approved"; proposal.approved_at=timezone.now(); proposal.save(update_fields=["status","approved_at","updated_at"])
+            version=current_version(proposal)
+            if version: outreach.message=version.content
+        outreach.status="approved"; outreach.approved_at=timezone.now(); outreach.save(update_fields=["status","approved_at","message"])
+        ActivityLog.objects.create(lead=lead,event_type="proposal.approved",message="Proposal approved by user. No message was sent.",metadata={"outreach_id":outreach.id,"proposal_id":outreach.proposal_id})
+        return Response({"outreach_id":outreach.id,"proposal_id":outreach.proposal_id,"status":"approved","sent":False,"message":outreach.message,"medium":outreach.medium,"action_type":outreach.action_type,"destination_url":outreach.destination_url,"can_send":outreach.medium=="email"})
     @action(detail=True,methods=["post"])
     def set_status(self,request,pk=None):
         lead=self.get_object(); new_status=str(request.data.get("status") or "").strip()
@@ -202,6 +200,70 @@ class LeadViewSet(viewsets.ModelViewSet):
         return Response(LeadSerializer(lead).data)
 
 @api_view(["GET"])
+@api_view(["GET"])
+def proposal_workspace(request, pk):
+    try: proposal=Proposal.objects.prefetch_related("versions").get(pk=pk)
+    except Proposal.DoesNotExist: return Response({"detail":"Proposal not found."},status=404)
+    version=current_version(proposal)
+    return Response({**ProposalSerializer(proposal).data,"current_content":version.content if version else ""})
+
+@api_view(["PUT"])
+def edit_proposal(request, pk):
+    try: proposal=Proposal.objects.get(pk=pk)
+    except Proposal.DoesNotExist: return Response({"detail":"Proposal not found."},status=404)
+    content=str(request.data.get("content") or "").strip()
+    if not content: return Response({"detail":"content is required."},status=400)
+    number=proposal.versions.order_by("-version_number").values_list("version_number",flat=True).first() or 0
+    version=proposal.versions.create(version_number=number+1,content=content,source="user",instruction="Manual workspace edit")
+    proposal.current_version=version.version_number; proposal.status="draft"; proposal.save(update_fields=["current_version","status","updated_at"])
+    proposal.outreach.update(message=content,status="draft")
+    return Response({**ProposalSerializer(proposal).data,"current_content":content})
+
+@api_view(["POST"])
+def revise_proposal_view(request, pk):
+    try: proposal=Proposal.objects.get(pk=pk)
+    except Proposal.DoesNotExist: return Response({"detail":"Proposal not found."},status=404)
+    try: version=revise_proposal(proposal,str(request.data.get("instruction") or ""))
+    except ValueError as exc: return Response({"detail":str(exc)},status=400)
+    proposal.outreach.update(message=version.content,status="draft")
+    return Response({**ProposalSerializer(proposal).data,"current_content":version.content})
+
+@api_view(["POST"])
+def restore_proposal_version(request, pk):
+    try: proposal=Proposal.objects.get(pk=pk); version=restore_version(proposal,int(request.data.get("version_number")))
+    except Proposal.DoesNotExist: return Response({"detail":"Proposal not found."},status=404)
+    except (ValueError,TypeError): return Response({"detail":"Valid version_number is required."},status=400)
+    proposal.outreach.update(message=version.content,status="draft")
+    return Response({**ProposalSerializer(proposal).data,"current_content":version.content})
+
+@api_view(["GET"])
+def proposals(request):
+    return _paginate(request,Proposal.objects.select_related("lead").prefetch_related("versions").order_by("-updated_at"),ProposalSerializer)
+
+@api_view(["POST"])
+def create_followup_sequence(request, pk):
+    try: lead=Lead.objects.get(pk=pk)
+    except Lead.DoesNotExist: return Response({"detail":"Lead not found."},status=404)
+    try: max_steps=int(request.data.get("max_steps",3))
+    except (TypeError,ValueError): max_steps=3
+    delays=request.data.get("delays_days") or [3,5,7]
+    if not isinstance(delays,list) or not delays or any(int(x)<=0 for x in delays): return Response({"detail":"delays_days must contain positive day values."},status=400)
+    sequence,followup=create_sequence(lead,delays,max_steps)
+    ActivityLog.objects.create(lead=lead,event_type="followup.sequence_created",message="Intelligent follow-up sequence created as drafts. No message was sent.",metadata={"sequence_id":sequence.id,"first_followup_id":followup.id})
+    return Response({"sequence":FollowUpSequenceSerializer(sequence).data,"first_followup":FollowUpSerializer(followup).data},status=201)
+
+@api_view(["GET"])
+def followup_sequences(request):
+    return _paginate(request,FollowUpSequence.objects.select_related("lead").prefetch_related("followups").order_by("-created_at"),FollowUpSequenceSerializer)
+
+@api_view(["POST"])
+def cancel_followup_sequence(request, pk):
+    try: sequence=FollowUpSequence.objects.get(pk=pk)
+    except FollowUpSequence.DoesNotExist: return Response({"detail":"Sequence not found."},status=404)
+    sequence.status="cancelled"; sequence.save(update_fields=["status","updated_at"])
+    FollowUp.objects.filter(sequence=sequence,status__in=["draft","approved","due"]).update(status="cancelled")
+    return Response(FollowUpSequenceSerializer(sequence).data)
+
 def discovery_profiles(request):
     return Response({"profiles":public_profiles(),"strategy_performance":strategy_performance()})
 
