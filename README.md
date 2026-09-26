@@ -147,14 +147,18 @@ Automated discovery uses a rotating set of four focused profiles. The worker run
 
 The discovery pipeline is:
 
-Live web search -> query freshness cache -> URL/title/company dedupe -> expiry filter -> deterministic relevance pre-filter -> GPT-4o-mini qualification -> qualified lead.
+Search/inventory gate -> query freshness cache -> one rotating profile -> live web search -> URL/title/company dedupe -> deterministic pre-filter -> targeted public-page enrichment -> qualification -> qualified lead.
 
 Default production settings:
 - discovery interval: 6 hours
-- query cache TTL: 36 hours
+- query cache TTL: 72 hours
 - one rotating profile per cycle
+- maximum 4 live searches per day
+- stop searching when 10 fresh qualified leads are available
 - search context: low
-- deterministic pre-filter before GPT
+- deterministic pre-filter threshold: 40
+- crawl only top 5 candidates per cycle
+- maximum 8 AI qualification candidates per cycle
 - proposals allowed only for qualified leads
 - outbound communication remains approval/provider gated
 
