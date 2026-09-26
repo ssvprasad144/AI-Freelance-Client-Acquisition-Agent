@@ -51,7 +51,8 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
             "current_only": True,
             "public_sources_only": True,
             "exclude_login_only_sources": True,
-            "max_results": settings.DISCOVERY_MAX_RESULTS,\n            "domain_exclusions": domain_exclusions,
+            "max_results": settings.DISCOVERY_MAX_RESULTS,
+            "domain_exclusions": domain_exclusions,
         },
     }
     response = client.responses.create(
