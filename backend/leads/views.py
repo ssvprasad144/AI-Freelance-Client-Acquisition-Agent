@@ -312,6 +312,39 @@ def send_outreach(request,pk):
         ActivityLog.objects.create(lead=outreach.lead,event_type="outreach.error",message="Configured outreach provider failed.",metadata={"outreach_id":outreach.id,"error":str(exc)})
         return Response({"detail":"Outbound provider failed.","sent":False},status=502)
 
+
+@api_view(["GET"])
+def outreach_ready(request):
+    rows=[]
+    qs=Outreach.objects.select_related("lead","proposal").filter(status__in=["draft","approved","opened"]).order_by("-created_at")
+    for item in qs:
+        rows.append({
+            "id":item.id,"lead_id":item.lead_id,"lead_title":item.lead.title,
+            "lead_source":item.lead.source,"medium":item.medium,"action_type":item.action_type,
+            "destination_url":item.destination_url,"message":item.message,"status":item.status,
+        })
+    return Response(rows)
+
+@api_view(["POST"])
+def open_outreach(request,pk):
+    try: item=Outreach.objects.get(pk=pk)
+    except Outreach.DoesNotExist: return Response({"detail":"Outreach not found."},status=404)
+    if item.status=="draft": item.status="opened"
+    item.opened_at=item.opened_at or timezone.now()
+    item.save(update_fields=["status","opened_at"])
+    return Response({"id":item.id,"status":item.status,"destination_url":item.destination_url})
+
+@api_view(["POST"])
+def mark_outreach_submitted(request,pk):
+    try: item=Outreach.objects.get(pk=pk)
+    except Outreach.DoesNotExist: return Response({"detail":"Outreach not found."},status=404)
+    if item.medium=="email": return Response({"detail":"Email outreach must be sent through the email action."},status=400)
+    if item.status not in {"draft","approved","opened"}: return Response({"detail":"Outreach is not actionable."},status=400)
+    item.status="submitted"; item.submitted_at=timezone.now()
+    item.save(update_fields=["status","submitted_at"])
+    log_acquisition_event(item.lead,"sent",{"outreach_id":item.id,"manual":True,"medium":item.medium})
+    return Response({"id":item.id,"status":item.status})
+
 @api_view(["GET"])
 def dashboard(request):
     now=timezone.now(); active=Lead.objects.exclude(status="archived").filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)); last=ActivityLog.objects.filter(event_type="discovery.completed").order_by("-created_at").first()
