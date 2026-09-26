@@ -9,7 +9,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from .ai_service import analyze_lead, generate_proposal
-from .models import ActivityLog, Lead, LeadAnalysis, Outreach, FollowUp, FollowUp
+from .models import ActivityLog, Lead, LeadAnalysis, Outreach, FollowUp
 from .serializers import ActivityLogSerializer, LeadSerializer, FollowUpSerializer
 from .discovery.service import DiscoveryService
 from .discovery.mock_provider import DiscoveryError
@@ -70,15 +70,33 @@ def qualify_new_leads(request):
 
 
 @api_view(["POST"])
-def create_followup(request, pk):
-    lead=Lead.objects.get(pk=pk)
+def create_followup(request, pk=None):
+    lead_id=pk or request.data.get("lead_id")
+    if not lead_id:
+        return Response({"detail":"lead_id is required."},status=status.HTTP_400_BAD_REQUEST)
+    try:
+        lead=Lead.objects.get(pk=lead_id)
+    except Lead.DoesNotExist:
+        return Response({"detail":"Lead not found."},status=status.HTTP_404_NOT_FOUND)
     scheduled_at=request.data.get("scheduled_at")
     message=str(request.data.get("message") or "").strip()
     if not scheduled_at or not message:
         return Response({"detail":"scheduled_at and message are required."},status=status.HTTP_400_BAD_REQUEST)
     followup=FollowUp.objects.create(lead=lead,scheduled_at=scheduled_at,message=message,status="draft")
     ActivityLog.objects.create(lead=lead,event_type="followup.created",message="Follow-up draft created. No message was sent.",metadata={"followup_id":followup.id})
-    return Response({"id":followup.id,"status":followup.status,"scheduled_at":followup.scheduled_at,"message":followup.message})
+    return Response(FollowUpSerializer(followup).data)
+
+@api_view(["GET"])
+def due_followups(request):
+    now=timezone.now()
+    due=FollowUp.objects.filter(status="approved",scheduled_at__lte=now).select_related("lead").order_by("scheduled_at")
+    with transaction.atomic():
+        for followup in due:
+            followup.status="due"
+            followup.save(update_fields=["status"])
+            ActivityLog.objects.create(lead=followup.lead,event_type="followup.due",message="Approved follow-up reached its scheduled time and is ready for action. No message was sent.",metadata={"followup_id":followup.id})
+    queue=FollowUp.objects.filter(status="due").select_related("lead").order_by("scheduled_at")[:100]
+    return Response(FollowUpSerializer(queue,many=True).data)
 
 @api_view(["GET"])
 def qualified_leads(request):
@@ -93,7 +111,7 @@ def approve_followup(request,pk):
     if followup.status!="draft": return Response({"detail":"Follow-up is not in draft state."},status=status.HTTP_400_BAD_REQUEST)
     followup.status="approved"; followup.approved_at=timezone.now(); followup.save(update_fields=["status","approved_at"])
     ActivityLog.objects.create(lead=followup.lead,event_type="followup.approved",message="Follow-up approved by user. No message was sent.",metadata={"followup_id":followup.id})
-    return Response({**FollowUpSerializer(followup).data,"sent":False})
+    return Response({**FollowUpSerializer(followup).data,"sent":False,"ready_for_action":False})
 
 @api_view(["POST"])
 def run_discovery(request):
@@ -132,5 +150,5 @@ class LeadViewSet(viewsets.ModelViewSet):
 def dashboard(request):
     now=timezone.now()
     active=Lead.objects.exclude(status="archived").filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now))
-    return JsonResponse({"opportunities":active.count(),"qualified":Lead.objects.filter(status="qualified").count(),"proposals":Lead.objects.filter(status="proposal").count(),"replies":Lead.objects.filter(status="replied").count(),"high_match":LeadAnalysis.objects.filter(match_score__gte=80).count()})
+    return JsonResponse({"opportunities":active.count(),"qualified":Lead.objects.filter(status="qualified").count(),"proposals":Lead.objects.filter(status="proposal").count(),"replies":Lead.objects.filter(status="replied").count(),"high_match":LeadAnalysis.objects.filter(match_score__gte=80).count(),"followups_pending":FollowUp.objects.filter(status="draft").count(),"followups_upcoming":FollowUp.objects.filter(status="approved",scheduled_at__gt=now).count(),"followups_due":FollowUp.objects.filter(status="due").count()})
 def activity(request): return JsonResponse({"items":ActivityLogSerializer(ActivityLog.objects.all()[:50],many=True).data})
