@@ -1,4 +1,5 @@
 from django.db.models import Sum,Count,Q
+from django.conf import settings
 from django.utils import timezone
 from .models import RevenueRecord, Lead, AcquisitionEvent, LearningStat
 
@@ -9,7 +10,7 @@ def upsert_revenue(lead,data):
     estimated=float(data.get("estimated_value",0) or 0); quoted=float(data.get("quoted_value",0) or 0); won=float(data.get("won_value",0) or 0)
     probability=float(data.get("probability",100 if lead.status=="won" else 25) or 0)
     obj,_=RevenueRecord.objects.update_or_create(lead=lead,defaults={
-        "estimated_value":estimated,"quoted_value":quoted,"won_value":won,"currency":str(data.get("currency") or getattr(__import__("django.conf",fromlist=["settings"]).settings,"REVENUE_DEFAULT_CURRENCY","USD")).upper()[:3],
+        "estimated_value":estimated,"quoted_value":quoted,"won_value":won,"currency":str(data.get("currency") or getattr(settings,"REVENUE_DEFAULT_CURRENCY","USD")).upper()[:3],
         "probability":max(0,min(100,probability)),"search_cost":float(data.get("search_cost",0) or 0),
         "ai_cost":float(data.get("ai_cost",0) or 0),"crawler_cost":float(data.get("crawler_cost",0) or 0),
         "outreach_cost":float(data.get("outreach_cost",0) or 0),"updated_at":timezone.now(),
