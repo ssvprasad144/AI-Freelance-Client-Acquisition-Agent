@@ -6,7 +6,7 @@ services:
     buildCommand: pip install -r requirements.txt && python manage.py migrate
     startCommand: gunicorn config.wsgi:application
     healthCheckPath: /api/health/
-    envVars: &app_env
+    envVars:
       - key: DJANGO_SECRET_KEY
         sync: false
       - key: DATABASE_URL
@@ -89,3 +89,13 @@ services:
         value: "60"
       - key: SECURE_SSL_REDIRECT
         value: "true"
+
+  - type: web
+    name: ai-freelance-client-agent-frontend
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: frontend/dist
+    rootDir: frontend
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false
