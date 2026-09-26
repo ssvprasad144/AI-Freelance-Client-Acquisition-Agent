@@ -1,6 +1,6 @@
 from django.db.models import Count,Q,Sum
 from django.utils import timezone
-from .models import DiscoverySearchStat,Lead,Outreach\nfrom .discovery.profiles import arm_performance
+from .models import DiscoveryDomainStat,DiscoverySearchStat,Lead,Outreach\nfrom .discovery.profiles import arm_performance,domain_performance
 
 def acquisition_metrics():
     total=Lead.objects.count(); qualified=Lead.objects.filter(status__in=["qualified","proposal","contacted","replied","won"]).count(); proposals=Outreach.objects.filter(status__in=["draft","approved","sent"]).count(); approved=Outreach.objects.filter(status__in=["approved","sent"]).count(); sent=Outreach.objects.filter(status="sent").count(); replied=Lead.objects.filter(status__in=["replied","won"]).count(); won=Lead.objects.filter(status="won").count(); lost=Lead.objects.filter(status="lost").count()
@@ -15,4 +15,4 @@ def acquisition_metrics():
             searches=row["searches"] or 0; created=row.get("created") or 0; q=row["qualified"] or 0; replies=row.get("replied") or 0; wins=row.get("won") or 0
             out.append({**row,"qualified_per_search":round(q/searches,3) if searches else 0,"created_per_search":round(created/searches,3) if searches else 0,"reply_per_search":round(replies/searches,3) if searches else 0,"win_per_search":round(wins/searches,3) if searches else 0,"qualification_from_created_pct":rate(q,created)})
         return out
-    return {"funnel":{"discovered":total,"qualified":qualified,"proposals":proposals,"approved":approved,"sent":sent,"replied":replied,"won":won,"lost":lost},"rates":{"qualification_rate":rate(qualified,total),"proposal_rate":rate(proposals,qualified),"approval_rate":rate(approved,proposals),"send_rate":rate(sent,approved),"reply_rate":rate(replied,sent),"win_rate":rate(won,replied)},"sources":list(source_rows),"lead_types":list(service_rows),"search_learning":efficiency(stats),"strategy_learning":efficiency(strategy_stats),"arm_learning":arm_performance(),"generated_at":timezone.now()}
+    return {"funnel":{"discovered":total,"qualified":qualified,"proposals":proposals,"approved":approved,"sent":sent,"replied":replied,"won":won,"lost":lost},"rates":{"qualification_rate":rate(qualified,total),"proposal_rate":rate(proposals,qualified),"approval_rate":rate(approved,proposals),"send_rate":rate(sent,approved),"reply_rate":rate(replied,sent),"win_rate":rate(won,replied)},"sources":list(source_rows),"lead_types":list(service_rows),"search_learning":efficiency(stats),"strategy_learning":efficiency(strategy_stats),"arm_learning":arm_performance(),"domain_learning":domain_performance(),"generated_at":timezone.now()}
