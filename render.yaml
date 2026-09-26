@@ -85,7 +85,8 @@ services:
     name: ai-freelance-client-agent-discovery
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt && python manage.py migrate
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: python manage.py migrate
     startCommand: python manage.py run_discovery_cycle --loop
     envVars:
       - key: DJANGO_SECRET_KEY
@@ -165,7 +166,8 @@ services:
     name: ai-freelance-client-agent-followups
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt && python manage.py migrate
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: python manage.py migrate
     startCommand: python manage.py process_due_followups --loop
     envVars:
       - key: DJANGO_SECRET_KEY
