@@ -102,8 +102,8 @@ class SearchLearningTests(APITestBase):
 
 
 class AdaptiveSearchSelectionTests(TestCase):
-    def _stat(self, profile_id, qualified, created=0):
-        return DiscoverySearchStat.objects.create(profile_id=profile_id,query=profile_id,normalized_query=profile_id,source="web_search",search_date=timezone.localdate(),qualified=qualified,newly_created_leads=created)
+    def _stat(self, profile_id, qualified, created=0, strategy_id="general-web"):
+        return DiscoverySearchStat.objects.create(profile_id=profile_id,strategy_id=strategy_id,query=profile_id,normalized_query=profile_id,source="web_search",search_date=timezone.localdate(),qualified=qualified,newly_created_leads=created)
 
     def test_exploration_covers_under_sampled_profiles(self):
         from .discovery.profiles import select_profile
@@ -119,3 +119,21 @@ class AdaptiveSearchSelectionTests(TestCase):
         self._stat("ai-automation",qualified=8,created=10)
         selected=select_profile(72,only_if_due=False)
         self.assertEqual(selected["id"],"ai-automation")
+
+
+class StrategyLearningTests(TestCase):
+    def _stat(self, strategy_id, qualified, created=0):
+        return DiscoverySearchStat.objects.create(profile_id="ai-automation",strategy_id=strategy_id,query=strategy_id,normalized_query=strategy_id,source="web_search",search_date=timezone.localdate(),qualified=qualified,newly_created_leads=created)
+
+    def test_strategy_exploration(self):
+        from .discovery.profiles import select_strategy
+        self._stat("marketplace",5,8)
+        selected=select_strategy()
+        self.assertIn(selected["id"],["community","startup-hiring","direct-web"])
+
+    def test_strategy_exploitation(self):
+        from .discovery.profiles import select_strategy
+        for sid in ["marketplace","community","startup-hiring","direct-web"]:
+            self._stat(sid,1,2); self._stat(sid,1,2)
+        self._stat("marketplace",8,10)
+        self.assertEqual(select_strategy()["id"],"marketplace")
