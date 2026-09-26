@@ -1,5 +1,6 @@
 from datetime import timedelta
 from django.test import TestCase
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.test import APIClient
 from .models import Lead, Meeting, Client, LearningStat
@@ -8,6 +9,9 @@ from .learning import refresh_learning
 
 class Phase1115Tests(TestCase):
     def setUp(self):
+        self.client=APIClient()
+        user=get_user_model().objects.create_user(username="phase1115",password="pass1234")
+        self.client.force_authenticate(user)
         self.lead=Lead.objects.create(
             title="AI automation dashboard",description="Build a Django React AI automation dashboard.",
             company="Acme Labs",source="linkedin",source_url="https://linkedin.com/jobs/view/1",
