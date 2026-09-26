@@ -1,11 +1,14 @@
 from django.db import transaction
 from django.utils import timezone
 
-from .models import ActivityLog, FollowUp
+from .models import ActivityLog, FollowUp, FollowUpSequence
+from .followup_intelligence import cancel_if_stopped
 
 
 def process_due_followups():
     now = timezone.now()
+    for sequence in FollowUpSequence.objects.filter(status="active").select_related("lead"):
+        cancel_if_stopped(sequence)
     candidate_ids = list(
         FollowUp.objects.filter(
             status="approved",
