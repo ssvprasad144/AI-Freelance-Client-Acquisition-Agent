@@ -35,7 +35,7 @@ services:
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt && python manage.py migrate
-    startCommand: python manage.py run_discovery_cycle --loop
+    startCommand: python manage.py run_acquisition_cycle --loop
     envVars:
       - key: DJANGO_SECRET_KEY
         sync: false
