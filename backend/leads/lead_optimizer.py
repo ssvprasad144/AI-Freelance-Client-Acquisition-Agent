@@ -65,5 +65,4 @@ def ai_skip_analysis(lead, local):
         "model": "local-prefilter",
         "input_tokens": 0,
         "output_tokens": 0,
-        "local_prefilter": local,
     }
