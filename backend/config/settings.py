@@ -22,6 +22,7 @@ if os.getenv("DATABASE_URL"):
 else: DATABASES={"default":{"ENGINE":"django.db.backends.sqlite3","NAME":BASE_DIR/"db.sqlite3"}}
 LANGUAGE_CODE="en-us"; TIME_ZONE="Asia/Kolkata"; USE_I18N=True; USE_TZ=True; STATIC_URL="static/"; STATIC_ROOT=BASE_DIR/"staticfiles"; STORAGES={"staticfiles":{"BACKEND":"whitenoise.storage.CompressedManifestStaticFilesStorage"}}; DEFAULT_AUTO_FIELD="django.db.models.BigAutoField"
 CORS_ALLOWED_ORIGINS=[x.strip() for x in os.getenv("CORS_ALLOWED_ORIGINS","http://localhost:5173").split(",") if x.strip()]
+CSRF_TRUSTED_ORIGINS=[x.strip() for x in os.getenv("CSRF_TRUSTED_ORIGINS","").split(",") if x.strip()]
 OPENAI_API_KEY=os.getenv("OPENAI_API_KEY",""); OPENAI_MODEL=os.getenv("OPENAI_MODEL","gpt-4o-mini"); DISCOVERY_MODEL=os.getenv("DISCOVERY_MODEL","gpt-4o-mini")
 DISCOVERY_MAX_RESULTS=int(os.getenv("DISCOVERY_MAX_RESULTS","20")); DISCOVERY_SEARCH_CONTEXT_SIZE=os.getenv("DISCOVERY_SEARCH_CONTEXT_SIZE","low")
 DEFAULT_DISCOVERY_QUERY=os.getenv("DEFAULT_DISCOVERY_QUERY","Find current freelance opportunities matching AI products, business automation, Django/React full-stack development, and Three.js interactive web development")
@@ -36,4 +37,31 @@ MOCK_LEADS_FILE=BASE_DIR/"leads"/"data"/"mock_freelance_leads_100.json"
 FREELANCE_SEARCH_PROFILE={"name":"SSVPrasad","services":["AI Products","Business Automation","Full-Stack Development","Interactive Web"],"skills":["Python","C++","JavaScript","SQL","React","Vite","Three.js","React Three Fiber","Django","Django REST Framework","PostgreSQL","SQLite","OpenAI","webhooks","GitHub","Render","GitHub Pages","Cloudinary","Linux"],"projects":[{"name":"AI Business Automation Dashboard","evidence":"AI workflow demos, execution logging, dashboard and backend APIs."},{"name":"CareerInnTech","evidence":"Django-based career platform with AI interview functionality and PostgreSQL."},{"name":"AI Interview","evidence":"Voice-first AI mock interview experience with Django and frontend integration."},{"name":"3D Motion Portfolio","evidence":"React/Three.js portfolio focused on interactive web experiences."}]}
 REST_FRAMEWORK={"DEFAULT_AUTHENTICATION_CLASSES":["rest_framework.authentication.TokenAuthentication"],"DEFAULT_PERMISSION_CLASSES":["rest_framework.permissions.IsAuthenticated"],"DEFAULT_RENDERER_CLASSES":["rest_framework.renderers.JSONRenderer","rest_framework.renderers.BrowsableAPIRenderer"],"DEFAULT_PAGINATION_CLASS":"leads.pagination.StandardPagination","PAGE_SIZE":50,"DEFAULT_THROTTLE_CLASSES":["rest_framework.throttling.AnonRateThrottle","rest_framework.throttling.UserRateThrottle","rest_framework.throttling.ScopedRateThrottle"],"DEFAULT_THROTTLE_RATES":{"anon":"30/min","user":"120/min","discovery":"5/min","ai":"30/min","login":"5/min"}}
 if not DEBUG:
-    SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO","https"); SECURE_SSL_REDIRECT=os.getenv("SECURE_SSL_REDIRECT","true").lower()=="true"; SESSION_COOKIE_SECURE=True; CSRF_COOKIE_SECURE=True; X_FRAME_OPTIONS="DENY"
+    SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO","https")
+    SECURE_SSL_REDIRECT=os.getenv("SECURE_SSL_REDIRECT","true").lower()=="true"
+    SESSION_COOKIE_SECURE=True
+    CSRF_COOKIE_SECURE=True
+    X_FRAME_OPTIONS="DENY"
+    SECURE_HSTS_SECONDS=int(os.getenv("SECURE_HSTS_SECONDS","31536000"))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS=True
+    SECURE_HSTS_PRELOAD=False
+    SECURE_CONTENT_TYPE_NOSNIFF=True
+    SECURE_REFERRER_POLICY=os.getenv("SECURE_REFERRER_POLICY","same-origin")
+    SECURE_CROSS_ORIGIN_OPENER_POLICY=os.getenv("SECURE_CROSS_ORIGIN_OPENER_POLICY","same-origin")
+    if not ALLOWED_HOSTS:
+        raise RuntimeError("ALLOWED_HOSTS must be configured when DEBUG=false.")
+    if not CORS_ALLOWED_ORIGINS:
+        raise RuntimeError("CORS_ALLOWED_ORIGINS must be configured when DEBUG=false.")
+    if not CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS=CORS_ALLOWED_ORIGINS
+
+LOGGING={
+    "version":1,
+    "disable_existing_loggers":False,
+    "formatters":{"simple":{"format":"{levelname} {asctime} {name} {message}","style":"{"}},
+    "handlers":{"console":{"class":"logging.StreamHandler","formatter":"simple"}},
+    "loggers":{
+        "django":{"handlers":["console"],"level":os.getenv("DJANGO_LOG_LEVEL","INFO")},
+        "django.request":{"handlers":["console"],"level":"WARNING","propagate":False},
+    },
+}
