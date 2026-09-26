@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from .models import ActivityLog, FollowUp, Lead
+from .models import ActivityLog, FollowUp, Lead, LeadAnalysis
 
 
 class FollowUpLifecycleTests(TestCase):
