@@ -188,4 +188,6 @@ def reusable_cache(query, profile_id=""):
     """Find the most similar recent cached query for a profile."""
     cutoff=timezone.now()-timezone.timedelta(hours=settings.DISCOVERY_QUERY_CACHE_TTL_HOURS)
     qs=DiscoveryQueryCache.objects.filter(profile_id=profile_id, searched_at__gte=cutoff).order_by("-searched_at")[:100]
+    if not qs:
+        qs=DiscoveryQueryCache.objects.filter(searched_at__gte=cutoff).order_by("-searched_at")[:200]
     return max(qs, key=lambda cache: query_similarity(query, cache.query), default=None)

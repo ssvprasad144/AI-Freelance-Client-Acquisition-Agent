@@ -251,3 +251,17 @@ class LearningStat(models.Model):
     class Meta:
         constraints=[models.UniqueConstraint(fields=["dimension","key"],name="unique_learning_dimension_key")]
         ordering=["-reward","-updated_at"]
+
+
+class AcquisitionOpportunity(models.Model):
+    lead=models.OneToOneField(Lead,on_delete=models.CASCADE,related_name="opportunity")
+    score=models.FloatField(default=0,db_index=True)
+    stage=models.CharField(max_length=30,default="new",db_index=True)
+    recommended_action=models.CharField(max_length=60,default="review",db_index=True)
+    action_category=models.CharField(max_length=60,default="")
+    reason=models.TextField(blank=True)
+    status=models.CharField(max_length=30,default="ready",db_index=True)
+    executed_at=models.DateTimeField(null=True,blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+    updated_at=models.DateTimeField(auto_now=True)
+    class Meta: ordering=["-score","-updated_at"]

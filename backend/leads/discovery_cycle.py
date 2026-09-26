@@ -45,7 +45,7 @@ def _store(items,profile_id="",strategy_id="",query=""):
 
 def _fresh_qualified_inventory():
     now=timezone.now(); cutoff=now-timezone.timedelta(hours=settings.DISCOVERY_FRESHNESS_HOURS)
-    return Lead.objects.filter(status="qualified",last_verified_at__gte=cutoff).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).count()
+    return Lead.objects.filter(status="qualified").filter(models.Q(last_verified_at__gte=cutoff)|models.Q(last_verified_at__isnull=True,updated_at__gte=cutoff)).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).count()
 
 def _daily_search_count():
     return ActivityLog.objects.filter(event_type="discovery.search",created_at__date=timezone.localdate()).count()
@@ -89,8 +89,10 @@ def _refresh_domain_outcomes(items):
 
 def _find_semantic_reuse(query,profile_id,strategy_id):
     cache=reusable_cache(query,profile_id=profile_id)
-    if cache and cache.query_family.endswith(f":{strategy_id}") and query_similarity(query,cache.query)>=settings.DISCOVERY_SEMANTIC_REUSE_THRESHOLD:
-        return cache
+    if cache and cache.query_family.endswith(f":{strategy_id}"):
+        similarity=query_similarity(query,cache.query)
+        if similarity>=settings.DISCOVERY_SEMANTIC_REUSE_THRESHOLD or (similarity>=0.5 and cache.profile_id==profile_id):
+            return cache
     return None
 
 def _payload(query,profile_id,**extra):

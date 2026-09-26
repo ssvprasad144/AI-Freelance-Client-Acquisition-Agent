@@ -26,10 +26,11 @@ from .proposal_service import create_proposal, current_version, revise_proposal,
 from .client_service import sync_lead_client, record_message, generate_client_intelligence
 from .meeting_service import sync_meeting_context, apply_meeting_status
 from .learning import log_acquisition_event, refresh_learning
+from .acquisition_orchestrator import build_queue, ensure_opportunity, execute_action, recalculate_opportunities
 from .analytics import acquisition_metrics
-from .models import ActivityLog, FollowUp, FollowUpSequence, Lead, LeadAnalysis, Outreach, Proposal, Reply, Client, Contact, Conversation, Meeting, AcquisitionEvent, LearningStat
+from .models import ActivityLog, FollowUp, FollowUpSequence, Lead, LeadAnalysis, Outreach, Proposal, Reply, Client, Contact, Conversation, Meeting, AcquisitionEvent, LearningStat, AcquisitionOpportunity
 from .pagination import StandardPagination
-from .serializers import ActivityLogSerializer, FollowUpSerializer, FollowUpSequenceSerializer, LeadSerializer, ReplySerializer, OutreachSerializer, ProposalSerializer, ClientSerializer, ContactSerializer, ConversationSerializer, MeetingSerializer, AcquisitionEventSerializer, LearningStatSerializer, ClientIntelligenceSerializer
+from .serializers import ActivityLogSerializer, FollowUpSerializer, FollowUpSequenceSerializer, LeadSerializer, ReplySerializer, OutreachSerializer, ProposalSerializer, ClientSerializer, ContactSerializer, ConversationSerializer, MeetingSerializer, AcquisitionEventSerializer, LearningStatSerializer, ClientIntelligenceSerializer, AcquisitionOpportunitySerializer
 
 def _normalize_title(value): return re.sub(r"\s+"," ",re.sub(r"[^a-z0-9 ]"," ",str(value).lower())).strip()
 def _normalize_url(value):
@@ -280,6 +281,7 @@ def cancel_followup_sequence(request, pk):
     FollowUp.objects.filter(sequence=sequence,status__in=["draft","approved","due"]).update(status="cancelled")
     return Response(FollowUpSequenceSerializer(sequence).data)
 
+@api_view(["GET"])
 def discovery_profiles(request):
     return Response({"profiles":public_profiles(),"strategy_performance":strategy_performance()})
 
@@ -434,3 +436,25 @@ def learning(request):
 def refresh_learning_view(request):
     stats=refresh_learning()
     return Response({"refreshed":len(stats),"stats":stats[:100]})
+
+
+@api_view(["GET"])
+def acquisition_queue(request):
+    limit=min(max(int(request.query_params.get("limit",50)),1),100)
+    return Response(AcquisitionOpportunitySerializer(build_queue(limit),many=True).data)
+
+@api_view(["GET"])
+def acquisition_next_actions(request):
+    rows=build_queue(20)
+    return Response([{"opportunity_id":x.id,"lead_id":x.lead_id,"action":x.recommended_action,"score":x.score,"reason":x.reason} for x in rows])
+
+@api_view(["POST"])
+def acquisition_action(request,pk):
+    try: obj=AcquisitionOpportunity.objects.select_related("lead").get(pk=pk)
+    except AcquisitionOpportunity.DoesNotExist:return Response({"detail":"Opportunity not found."},status=404)
+    action=str(request.data.get("action") or obj.recommended_action); mode=str(request.data.get("mode") or "approval_required"); approved=bool(request.data.get("approved",False))
+    try:return Response(execute_action(obj,action,mode=mode,approved=approved))
+    except ValueError as exc:return Response({"detail":str(exc),"executed":False},status=400)
+
+@api_view(["POST"])
+def acquisition_recalculate(request): return Response(recalculate_opportunities())
