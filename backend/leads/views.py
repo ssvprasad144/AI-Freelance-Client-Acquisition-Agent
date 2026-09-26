@@ -15,6 +15,8 @@ from .ai_service import analyze_lead, generate_proposal
 from .discovery.live_provider import LiveDiscoveryError
 from .discovery.mock_provider import DiscoveryError
 from .discovery.service import DiscoveryService
+from .discovery.profiles import public_profiles
+from .lead_optimizer import local_lead_score, should_ai_qualify, ai_skip_analysis
 from .followup_service import process_due_followups as process_due_followups_service
 from .acquisition import classify_reply, send_email, send_followup as send_followup_email
 from .analytics import acquisition_metrics
@@ -69,13 +71,19 @@ def _store(items):
 @throttle_classes([AIThrottle])
 def qualify_new_leads(request):
     limit=min(max(int(request.data.get("limit",20)),1),50)
-    leads=list(Lead.objects.filter(status="new",analysis__isnull=True).order_by("-discovered_at","-created_at")[:limit]); qualified=0
+    now=timezone.now()
+    leads=list(Lead.objects.filter(status="new",analysis__isnull=True).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).order_by("-discovered_at","-created_at")[:limit]); qualified=0; locally_filtered=0
     for lead in leads:
-        data=analyze_lead(lead); analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data)
+        local=local_lead_score(lead)
+        if not should_ai_qualify(lead):
+            data=ai_skip_analysis(lead,local); locally_filtered+=1
+        else:
+            data=analyze_lead(lead)
+        analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data)
         if analysis.relevant and analysis.match_score>=settings.QUALIFICATION_MIN_SCORE:
             lead.status="qualified"; lead.save(update_fields=["status","updated_at"]); qualified+=1
             ActivityLog.objects.create(lead=lead,event_type="lead.auto_qualified",message=f"Lead auto-qualified with score {analysis.match_score}.",metadata={"model":analysis.model,"match_score":analysis.match_score,"threshold":settings.QUALIFICATION_MIN_SCORE})
-    return Response({"status":"success","analyzed":len(leads),"qualified":qualified,"threshold":settings.QUALIFICATION_MIN_SCORE,"remaining_new":Lead.objects.filter(status="new").count()})
+    return Response({"status":"success","analyzed":len(leads),"qualified":qualified,"locally_filtered":locally_filtered,"ai_calls":len(leads)-locally_filtered,"threshold":settings.QUALIFICATION_MIN_SCORE,"remaining_new":Lead.objects.filter(status="new").count()})
 
 @api_view(["GET"])
 def followups(request): return _paginate(request,FollowUp.objects.filter(status__in=["draft","approved"]).select_related("lead").order_by("scheduled_at"),FollowUpSerializer)
@@ -152,6 +160,8 @@ class LeadViewSet(viewsets.ModelViewSet):
     def proposal(self,request,pk=None):
         lead=self.get_object(); analysis=getattr(lead,"analysis",None)
         if not analysis:return Response({"detail":"Analyze the lead first."},status=400)
+        if not (analysis.relevant and analysis.match_score>=settings.QUALIFICATION_MIN_SCORE):
+            return Response({"detail":f"Only qualified leads can generate proposals. Required score: {settings.QUALIFICATION_MIN_SCORE}."},status=400)
         message=generate_proposal(lead,analysis); outreach=Outreach.objects.create(lead=lead,channel="email",message=message,status="draft"); lead.status="proposal"; lead.save(update_fields=["status","updated_at"])
         ActivityLog.objects.create(lead=lead,event_type="proposal.generated",message="Proposal draft generated. No message was sent.",metadata={"outreach_id":outreach.id})
         return Response({"outreach_id":outreach.id,"status":"draft","message":message})
@@ -169,16 +179,9 @@ class LeadViewSet(viewsets.ModelViewSet):
         lead.status=new_status; lead.save(update_fields=["status","updated_at"]); ActivityLog.objects.create(lead=lead,event_type="lead.status_changed",message=f"Lead status changed to {new_status}.",metadata={"status":new_status})
         return Response(LeadSerializer(lead).data)
 
-DISCOVERY_PROFILES=[
-    {"id":"ai-automation","label":"AI & Automation","query":"current public freelance opportunities for AI products, AI agents, workflow automation, Python automation and business automation"},
-    {"id":"django-fullstack","label":"Django & Full-Stack","query":"current public freelance opportunities for Django, Django REST Framework, Python backend, React and full-stack development"},
-    {"id":"interactive-web","label":"React & Three.js","query":"current public freelance opportunities for React, Three.js, WebGL, interactive websites and 3D web development"},
-    {"id":"startup-build","label":"Startup MVPs","query":"current public freelance opportunities from startups seeking an MVP, SaaS prototype, AI MVP or full-stack product developer"},
-]
-
 @api_view(["GET"])
 def discovery_profiles(request):
-    return Response({"profiles":DISCOVERY_PROFILES})
+    return Response({"profiles":public_profiles()})
 
 @api_view(["GET"])
 def analytics(request):
