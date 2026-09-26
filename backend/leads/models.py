@@ -41,6 +41,10 @@ class DiscoveryQueryCache(models.Model):
     profile_id=models.CharField(max_length=100,default="custom",db_index=True)
     searched_at=models.DateTimeField(null=True,blank=True,db_index=True)
     result_count=models.PositiveIntegerField(default=0)
+    query_family=models.CharField(max_length=120,default="general",db_index=True)
+    query_signature=models.CharField(max_length=64,default="",db_index=True)
+    result_payload=models.JSONField(default=list,blank=True)
+    source_domains=models.JSONField(default=list,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)
     updated_at=models.DateTimeField(auto_now=True)
     class Meta:
@@ -67,6 +71,10 @@ class DiscoverySearchStat(models.Model):
     qualified=models.PositiveIntegerField(default=0)
     replied=models.PositiveIntegerField(default=0)
     won=models.PositiveIntegerField(default=0)
+    query_family=models.CharField(max_length=120,default="general",db_index=True)
+    query_variant=models.CharField(max_length=120,default="base",db_index=True)
+    source_domains=models.JSONField(default=list,blank=True)
+    context_size=models.CharField(max_length=20,default="low")
     created_at=models.DateTimeField(auto_now_add=True)
     updated_at=models.DateTimeField(auto_now=True)
     class Meta:
@@ -77,3 +85,18 @@ class ActivityLog(models.Model):
     lead=models.ForeignKey(Lead,on_delete=models.CASCADE,null=True,blank=True,related_name="activity"); event_type=models.CharField(max_length=100)
     message=models.TextField(); metadata=models.JSONField(default=dict,blank=True); created_at=models.DateTimeField(auto_now_add=True)
     class Meta: ordering=["-created_at"]
+
+
+class DiscoveryDomainStat(models.Model):
+    domain=models.CharField(max_length=255,unique=True)
+    searches=models.PositiveIntegerField(default=0)
+    results=models.PositiveIntegerField(default=0)
+    qualified=models.PositiveIntegerField(default=0)
+    replied=models.PositiveIntegerField(default=0)
+    won=models.PositiveIntegerField(default=0)
+    last_seen_at=models.DateTimeField(null=True,blank=True)
+    blocked_until=models.DateTimeField(null=True,blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+    updated_at=models.DateTimeField(auto_now=True)
+    class Meta:
+        ordering=["-qualified","-results"]

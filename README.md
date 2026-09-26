@@ -163,3 +163,19 @@ Default production settings:
 - outbound communication remains approval/provider gated
 
 The worker now measures qualified leads per search, created leads per search, replies per search, and wins per search. Profiles with fewer than the configured exploration minimum are tested first; after that, higher measured yield receives priority. The default learning window is 30 days. This keeps search spend bounded while progressively concentrating the budget on better-performing discovery strategies without permanently starving newer strategies.
+
+### Web-search cost intelligence v2
+
+The discovery engine now applies ten cost controls before and around paid web search:
+1. search-necessity gating from fresh qualified inventory and recent cache state
+2. semantic query deduplication and cross-profile result reuse
+3. source-domain performance tracking with temporary suppression of consistently low-yield domains
+4. adaptive search-context sizing based on arm performance
+5. query-variant evolution across base, recent, client-request and project formulations
+6. freshness-aware inventory and cache reuse
+7. qualification/reply/win feedback at search, arm and domain levels
+8. configurable preferred discovery hours to avoid low-value timing
+9. cross-profile reuse of compatible recent search results
+10. dynamic daily search budgeting: the four-search ceiling is a ceiling, not a target
+
+These controls are local Django/PostgreSQL logic. They do not add an AI training job or an extra model call merely to choose a search. A paid web search is made only after the local gates allow it. The existing 72-hour query cache, 30-day learning window, 4-search daily ceiling, local prefilter and crawler/qualification limits remain in place.

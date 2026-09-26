@@ -1,11 +1,11 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
-from .models import ActivityLog,DiscoveryQueryCache,DiscoverySearchStat,FollowUp,Lead,LeadAnalysis,Outreach,Reply
+from .models import ActivityLog,DiscoveryDomainStat,DiscoveryQueryCache,DiscoverySearchStat,FollowUp,Lead,LeadAnalysis,Outreach,Reply
 from .analytics import acquisition_metrics
 
 class APITestBase(TestCase):
@@ -123,3 +123,53 @@ class AdaptiveSearchSelectionTests(TestCase):
         selected=select_profile(72,only_if_due=False)
         self.assertEqual((selected["id"],selected["strategy_id"]),("ai-automation","community"))
 
+
+
+class WebSearchCostV2Tests(APITestBase):
+    def _cached_payload(self):
+        return [{"title":"Reusable Django Project","company":"Reuse Client","description":"Build a Django automation project.","source":"web_search","source_url":"https://reuse.example/jobs/1","lead_type":"freelance","technologies":["Django"],"contact_info":{}}]
+
+    @patch("leads.discovery_cycle.DiscoveryService.discover")
+    def test_semantic_result_reuse_avoids_second_web_search(self,discover):
+        discover.return_value={"source":"web_search","model":"gpt-4o-mini","leads":self._cached_payload()}
+        call_command("run_discovery_cycle","--query","current Django freelance opportunities","--source","live")
+        call_command("run_discovery_cycle","--query","recent Django freelance project opportunities","--source","live")
+        self.assertEqual(discover.call_count,1)
+
+    @patch("leads.discovery_cycle.DiscoveryService.discover")
+    def test_dynamic_budget_reduces_searches_when_inventory_is_high(self,discover):
+        discover.return_value={"source":"web_search","model":"gpt-4o-mini","leads":[]}
+        for i in range(8):
+            Lead.objects.create(title=f"Fresh Qualified {i}",description="Django project",source_url=f"https://fresh.example/{i}",status="qualified",last_verified_at=timezone.now())
+        with patch("leads.discovery_cycle.settings.DISCOVERY_TARGET_QUALIFIED_LEADS",10), patch("leads.discovery_cycle.settings.DISCOVERY_MAX_SEARCHES_PER_DAY",4):
+            ActivityLog.objects.create(event_type="discovery.search",message="prior",metadata={})\n            ActivityLog.objects.create(event_type="discovery.search",message="prior",metadata={})
+            result=__import__("leads.discovery_cycle",fromlist=["run_discovery_cycle"]).run_discovery_cycle(query="Django freelance",profile_id="budget-test")
+        self.assertEqual(discover.call_count,0)
+        self.assertIn(result["skip_reason"],{"dynamic daily web-search budget exhausted","fresh qualified lead inventory is already healthy"})
+
+    @patch("leads.discovery_cycle.DiscoveryService.discover")
+    def test_cross_profile_cache_reuse(self,discover):
+        payload=self._cached_payload()
+        DiscoveryQueryCache.objects.create(profile_id="ai-automation",normalized_query="current django automation client request",query="current django automation client request",query_family="ai-automation:community",query_signature=query_signature("current django automation client request"),searched_at=timezone.now(),result_count=1,result_payload=payload,source_domains=["reuse.example"])
+        result=__import__("leads.discovery_cycle",fromlist=["run_discovery_cycle"]).run_discovery_cycle(query="current django automation project request",profile_id="django-fullstack",strategy_id="community")
+        self.assertEqual(discover.call_count,0)
+        self.assertTrue(result["reused"])
+
+    def test_domain_learning_records_source_domains(self):
+        DiscoveryDomainStat.objects.create(domain="example.com",searches=3,results=20,qualified=1)
+        from .discovery.profiles import domain_performance
+        self.assertEqual(domain_performance()[0]["domain"],"example.com")
+
+    def test_query_variants_are_tracked(self):
+        DiscoverySearchStat.objects.create(profile_id="ai-automation",strategy_id="community",query="x",normalized_query="x",query_family="ai-automation:community",query_variant="client-request",source="web_search",search_date=timezone.localdate(),qualified=2)
+        from .discovery.profiles import select_query_variant
+        self.assertIn(select_query_variant("ai-automation","community"),{"base","recent","client-request","project"})
+
+    def test_adaptive_context_stays_low_for_new_arms(self):
+        from .discovery.profiles import select_context_size
+        self.assertEqual(select_context_size("ai-automation","community"),"low")
+
+    def test_preferred_search_window_can_defer_search(self):
+        from .discovery.profiles import preferred_search_window_open
+        with patch("leads.discovery.profiles.settings.DISCOVERY_PREFERRED_HOURS_ENABLED",True), patch("leads.discovery.profiles.timezone.localtime",return_value=datetime(2026,1,1,3,0,tzinfo=timezone.get_current_timezone())):
+            self.assertFalse(preferred_search_window_open())
