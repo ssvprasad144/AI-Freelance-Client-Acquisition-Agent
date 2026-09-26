@@ -23,10 +23,13 @@ from .followup_intelligence import create_sequence, cancel_if_stopped
 from .acquisition import classify_reply, send_email, send_followup as send_followup_email
 from .outreach_adapters import resolve_outreach_destination
 from .proposal_service import create_proposal, current_version, revise_proposal, restore_version
+from .client_service import sync_lead_client, record_message, generate_client_intelligence
+from .meeting_service import sync_meeting_context, apply_meeting_status
+from .learning import log_acquisition_event, refresh_learning
 from .analytics import acquisition_metrics
-from .models import ActivityLog, FollowUp, FollowUpSequence, Lead, LeadAnalysis, Outreach, Proposal, Reply
+from .models import ActivityLog, FollowUp, FollowUpSequence, Lead, LeadAnalysis, Outreach, Proposal, Reply, Client, Contact, Conversation, Meeting, AcquisitionEvent, LearningStat
 from .pagination import StandardPagination
-from .serializers import ActivityLogSerializer, FollowUpSerializer, FollowUpSequenceSerializer, LeadSerializer, ReplySerializer, OutreachSerializer, ProposalSerializer
+from .serializers import ActivityLogSerializer, FollowUpSerializer, FollowUpSequenceSerializer, LeadSerializer, ReplySerializer, OutreachSerializer, ProposalSerializer, ClientSerializer, ContactSerializer, ConversationSerializer, MeetingSerializer, AcquisitionEventSerializer, LearningStatSerializer
 
 def _normalize_title(value): return re.sub(r"\s+"," ",re.sub(r"[^a-z0-9 ]"," ",str(value).lower())).strip()
 def _normalize_url(value):
@@ -156,6 +159,9 @@ def create_reply(request,pk):
     except Exception as exc:
         classification={"recommended_action":"Review reply manually.","error":str(exc)}
     lead.status="replied"; lead.save(update_fields=["status","updated_at"])
+    client,contact=sync_lead_client(lead)
+    if client: record_message(client,lead,reply.channel,"inbound",message,{"reply_id":reply.id},contact)
+    log_acquisition_event(lead,"replied",{"reply_id":reply.id})
     for sequence in FollowUpSequence.objects.filter(lead=lead,status="active"):
         cancel_if_stopped(sequence)
     ActivityLog.objects.create(lead=lead,event_type="lead.reply_received",message="Reply recorded and analyzed manually.",metadata={"reply_id":reply.id})
@@ -179,6 +185,8 @@ class LeadViewSet(viewsets.ModelViewSet):
         proposal,version=create_proposal(lead,analysis,delivery["medium"])
         outreach=Outreach.objects.create(lead=lead,proposal=proposal,channel=delivery["medium"],medium=delivery["medium"],action_type=delivery["action_type"],destination_url=delivery["action_url"] or "",message=version.content,status="draft")
         lead.status="proposal"; lead.save(update_fields=["status","updated_at"])
+        sync_lead_client(lead)
+        log_acquisition_event(lead,"proposal_generated",{"proposal_id":proposal.id,"outreach_id":outreach.id})
         ActivityLog.objects.create(lead=lead,event_type="proposal.generated",message="Versioned proposal draft generated. No message was sent.",metadata={"outreach_id":outreach.id,"proposal_id":proposal.id,"version":version.version_number})
         return Response({"outreach_id":outreach.id,"proposal_id":proposal.id,"version":version.version_number,"status":"draft","message":version.content,"medium":outreach.medium,"action_type":outreach.action_type,"destination_url":outreach.destination_url,"lead_source_url":lead.source_url,"can_send":outreach.medium=="email"})
     @action(detail=True,methods=["post"])
@@ -191,12 +199,16 @@ class LeadViewSet(viewsets.ModelViewSet):
             if version: outreach.message=version.content
         outreach.status="approved"; outreach.approved_at=timezone.now(); outreach.save(update_fields=["status","approved_at","message"])
         ActivityLog.objects.create(lead=lead,event_type="proposal.approved",message="Proposal approved by user. No message was sent.",metadata={"outreach_id":outreach.id,"proposal_id":outreach.proposal_id})
+        log_acquisition_event(lead,"approved",{"proposal_id":outreach.proposal_id,"outreach_id":outreach.id})
         return Response({"outreach_id":outreach.id,"proposal_id":outreach.proposal_id,"status":"approved","sent":False,"message":outreach.message,"medium":outreach.medium,"action_type":outreach.action_type,"destination_url":outreach.destination_url,"can_send":outreach.medium=="email"})
     @action(detail=True,methods=["post"])
     def set_status(self,request,pk=None):
         lead=self.get_object(); new_status=str(request.data.get("status") or "").strip()
         if new_status not in {x[0] for x in Lead.STATUS}:return Response({"detail":"Invalid lead status."},status=400)
-        lead.status=new_status; lead.save(update_fields=["status","updated_at"]); ActivityLog.objects.create(lead=lead,event_type="lead.status_changed",message=f"Lead status changed to {new_status}.",metadata={"status":new_status})
+        lead.status=new_status; lead.save(update_fields=["status","updated_at"])
+        event_map={"won":"won","lost":"lost","qualified":"qualified"}
+        if new_status in event_map: log_acquisition_event(lead,event_map[new_status])
+        ActivityLog.objects.create(lead=lead,event_type="lead.status_changed",message=f"Lead status changed to {new_status}.",metadata={"status":new_status})
         return Response(LeadSerializer(lead).data)
 
 @api_view(["GET"])
@@ -287,7 +299,12 @@ def send_followup(request,pk):
 def send_outreach(request,pk):
     try: outreach=Outreach.objects.select_related("lead").get(pk=pk)
     except Outreach.DoesNotExist: return Response({"detail":"Outreach not found."},status=404)
-    try: return Response(send_email(outreach))
+    try:
+        result=send_email(outreach)
+        log_acquisition_event(outreach.lead,"sent",{"outreach_id":outreach.id})
+        client,contact=sync_lead_client(outreach.lead)
+        if client: record_message(client,outreach.lead,outreach.medium,"outbound",outreach.message,{"outreach_id":outreach.id},contact)
+        return Response(result)
     except ValueError as exc: return Response({"detail":str(exc),"sent":False},status=400)
     except Exception as exc:
         ActivityLog.objects.create(lead=outreach.lead,event_type="outreach.error",message="Configured outreach provider failed.",metadata={"outreach_id":outreach.id,"error":str(exc)})
@@ -300,3 +317,73 @@ def dashboard(request):
 
 @api_view(["GET"])
 def activity(request):return _paginate(request,ActivityLog.objects.all(),ActivityLogSerializer)
+
+
+@api_view(["GET"])
+def clients(request):
+    return _paginate(request,Client.objects.prefetch_related("contacts","conversations","intelligence").order_by("-updated_at"),ClientSerializer)
+
+@api_view(["POST"])
+def sync_clients(request):
+    count=0
+    for lead in Lead.objects.all().iterator():
+        if lead.company:
+            sync_lead_client(lead); count+=1
+    return Response({"synced":count,"clients":Client.objects.count()})
+
+@api_view(["GET"])
+def client_detail(request,pk):
+    try: client=Client.objects.prefetch_related("contacts","conversations__messages","intelligence").get(pk=pk)
+    except Client.DoesNotExist: return Response({"detail":"Client not found."},status=404)
+    return Response(ClientSerializer(client).data)
+
+@api_view(["POST"])
+@throttle_classes([AIThrottle])
+def client_intelligence(request,pk):
+    try: client=Client.objects.get(pk=pk)
+    except Client.DoesNotExist: return Response({"detail":"Client not found."},status=404)
+    intelligence=generate_client_intelligence(client)
+    return Response({"client":ClientSerializer(client).data,"intelligence":__import__("leads.serializers",fromlist=["ClientIntelligenceSerializer"]).ClientIntelligenceSerializer(intelligence).data})
+
+@api_view(["GET"])
+def meetings(request):
+    return _paginate(request,Meeting.objects.select_related("client","lead","contact").order_by("-scheduled_at","-created_at"),MeetingSerializer)
+
+@api_view(["POST"])
+def create_meeting(request):
+    lead=None
+    if request.data.get("lead_id"):
+        try: lead=Lead.objects.get(pk=request.data["lead_id"])
+        except Lead.DoesNotExist: return Response({"detail":"Lead not found."},status=404)
+    client=None
+    if request.data.get("client_id"):
+        try: client=Client.objects.get(pk=request.data["client_id"])
+        except Client.DoesNotExist: return Response({"detail":"Client not found."},status=404)
+    if lead and not client: client,_=sync_lead_client(lead)
+    meeting=Meeting.objects.create(lead=lead,client=client,contact_id=request.data.get("contact_id"),status=str(request.data.get("status") or "requested"),scheduled_at=request.data.get("scheduled_at"),meeting_url=str(request.data.get("meeting_url") or ""),notes=str(request.data.get("notes") or ""),outcome=str(request.data.get("outcome") or ""),next_action=str(request.data.get("next_action") or ""))
+    sync_meeting_context(meeting); apply_meeting_status(meeting,meeting.status)
+    return Response(MeetingSerializer(meeting).data,status=201)
+
+@api_view(["PATCH","PUT"])
+def update_meeting(request,pk):
+    try: meeting=Meeting.objects.get(pk=pk)
+    except Meeting.DoesNotExist: return Response({"detail":"Meeting not found."},status=404)
+    allowed=["status","scheduled_at","meeting_url","notes","outcome","next_action","completed_at"]
+    for field in allowed:
+        if field in request.data: setattr(meeting,field,request.data[field])
+    sync_meeting_context(meeting); apply_meeting_status(meeting,meeting.status)
+    return Response(MeetingSerializer(meeting).data)
+
+@api_view(["GET"])
+def acquisition_events(request):
+    return _paginate(request,AcquisitionEvent.objects.select_related("lead").order_by("-occurred_at"),AcquisitionEventSerializer)
+
+@api_view(["GET"])
+def learning(request):
+    refresh_learning()
+    return Response({"stats":LearningStatSerializer(LearningStat.objects.all()[:100],many=True).data})
+
+@api_view(["POST"])
+def refresh_learning_view(request):
+    stats=refresh_learning()
+    return Response({"refreshed":len(stats),"stats":stats[:100]})
