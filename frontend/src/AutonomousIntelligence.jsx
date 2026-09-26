@@ -1,13 +1,13 @@
 import React,{useEffect,useState} from "react";
 import {api} from "./api";
 
-export default function AutonomousIntelligence(){
+export default function AutonomousIntelligence({demoMode=false}){
  const [queue,setQueue]=useState([]),[outreach,setOutreach]=useState(null),[revenue,setRevenue]=useState(null),[error,setError]=useState(""),[busy,setBusy]=useState(false);
  async function load(){setBusy(true);setError("");try{const [q,o,r]=await Promise.all([api.acquisitionQueue(),api.outreachStrategy(),api.revenue()]);setQueue(q);setOutreach(o);setRevenue(r)}catch(e){setError(e.message)}finally{setBusy(false)}}
  useEffect(()=>{if(import.meta.env.VITE_PUBLIC_PREVIEW!=="false")return;void load()},[]);
  async function execute(item){setBusy(true);try{await api.acquisitionAction(item.id,{action:item.recommended_action});await load()}catch(e){setError(e.message);setBusy(false)}}
  return <section className="panel" style={{marginTop:20}}>
-  <div className="panel-head"><div><div className="eyebrow">PHASES 16–18 · CLOSED LOOP</div><h2>Autonomous Acquisition Intelligence</h2></div><button className="secondary" onClick={load} disabled={busy}>{busy?"Updating…":"Refresh intelligence"}</button></div>
+  <div className="panel-head"><div><div className="eyebrow">PHASES 16–18 · CLOSED LOOP</div><h2>Autonomous Acquisition Intelligence</h2></div><button className="secondary" onClick={load} disabled={demoMode||busy}>{busy?"Updating…":"Refresh intelligence"}</button></div>
   {error&&<div className="error">{error}</div>}
   <div className="metrics">
    <article className="metric"><span>Priority actions</span><strong>{queue.length}</strong></article>
@@ -18,7 +18,7 @@ export default function AutonomousIntelligence(){
   </div>
   <div className="workspace" style={{marginTop:16}}>
    <div className="card"><div className="eyebrow">PHASE 16 · NEXT BEST ACTION</div><h3>Priority queue</h3>
-    {!queue.length?<div className="empty">No active opportunities need action.</div>:queue.slice(0,12).map(x=><div className="due-row" key={x.id}><div><b>{x.lead_title}</b><div className="muted">Score {Number(x.score).toFixed(1)} · {x.recommended_action} · {x.reason||"model-driven priority"}</div></div><button className="secondary" disabled={busy} onClick={()=>execute(x)}>Review action</button></div>)}
+    {!queue.length?<div className="empty">No active opportunities need action.</div>:queue.slice(0,12).map(x=><div className="due-row" key={x.id}><div><b>{x.lead_title}</b><div className="muted">Score {Number(x.score).toFixed(1)} · {x.recommended_action} · {x.reason||"model-driven priority"}</div></div><button className="secondary" disabled={demoMode||busy} onClick={()=>execute(x)}>Review action</button></div>)}
    </div>
    <div className="card"><div className="eyebrow">PHASE 17 · CHANNEL INTELLIGENCE</div><h3>Outreach strategy</h3>
     {!outreach?.plans?.length?<div className="empty">No eligible outreach plans.</div>:outreach.plans.slice(0,10).map(x=><div className="due-row" key={x.id}><div><b>{x.lead_title}</b><div className="muted">{x.channel} · Variant {x.variant} · {x.automatic?"automatic-capable":"manual"} · {x.status}</div></div></div>)}
