@@ -85,13 +85,14 @@ services:
       - key: SECURE_SSL_REDIRECT
         value: "true"
 
-  - type: worker
-    name: ai-freelance-client-agent-discovery
+  - type: cron
+    name: ai-freelance-client-agent-discovery-cron
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt && python manage.py check --deploy
-    preDeployCommand: python manage.py migrate
-    startCommand: python manage.py run_discovery_cycle --loop
+    region: singapore
+    schedule: '0 */6 * * *'
+    startCommand: python manage.py run_discovery_cycle
     envVars:
       - key: DJANGO_SECRET_KEY
         sync: false
@@ -170,13 +171,15 @@ services:
       - key: SECURE_SSL_REDIRECT
         value: "true"
 
-  - type: worker
-    name: ai-freelance-client-agent-followups
+
+  - type: cron
+    name: ai-freelance-client-agent-followups-cron
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt && python manage.py check --deploy
-    preDeployCommand: python manage.py migrate
-    startCommand: python manage.py process_due_followups --loop
+    region: singapore
+    schedule: '*/30 * * * *'
+    startCommand: python manage.py process_due_followups
     envVars:
       - key: DJANGO_SECRET_KEY
         sync: false
@@ -254,6 +257,7 @@ services:
         value: "60"
       - key: SECURE_SSL_REDIRECT
         value: "true"
+
 
   - type: web
     name: ai-freelance-client-agent-frontend
