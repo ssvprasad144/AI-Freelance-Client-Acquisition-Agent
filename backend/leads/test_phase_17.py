@@ -1,8 +1,9 @@
 from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from unittest.mock import patch
 from rest_framework.test import APIClient
-from .models import Lead, OutreachPlan
+from .models import Lead, OutreachPlan, FollowUp
 from .outreach_intelligence import create_plan, eligible, mark_approved, record_attempt_for_outreach
 
 class Phase17Tests(TestCase):
@@ -63,6 +64,20 @@ class Phase17Tests(TestCase):
         outreach=self.lead.outreach.get(medium="email")
         first=self.api.post(f"/api/outreach/{outreach.id}/send/")
         second=self.api.post(f"/api/outreach/{outreach.id}/send/")
+        self.assertEqual(first.status_code,200)
+        self.assertEqual(second.status_code,409)
+        self.assertEqual(mock_send.call_count,1)
+
+
+    @patch("leads.views.send_followup_email")
+    def test_followup_send_is_idempotent(self, mock_send):
+        def fake_send(followup):
+            followup.status="sent"; followup.save(update_fields=["status"])
+            return {"sent":True,"followup_id":followup.id}
+        mock_send.side_effect=fake_send
+        followup=FollowUp.objects.create(lead=self.lead,medium="email",action_type="send_email",scheduled_at=timezone.now(),message="Follow up",status="due")
+        first=self.api.post(f"/api/followups/{followup.id}/send/")
+        second=self.api.post(f"/api/followups/{followup.id}/send/")
         self.assertEqual(first.status_code,200)
         self.assertEqual(second.status_code,409)
         self.assertEqual(mock_send.call_count,1)
