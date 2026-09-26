@@ -4,7 +4,7 @@ import {api} from "./api";
 export default function ProposalWorkspace({proposalId,onClose}){
  const [data,setData]=useState(null),[content,setContent]=useState(""),[instruction,setInstruction]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
  async function load(){try{const x=await api.proposalWorkspace(proposalId);setData(x);setContent(x.current_content||"")}catch(e){setError(e.message)}}
- useEffect(()=>{void load()},[proposalId]);
+ useEffect(()=>{if(new URLSearchParams(window.location.search).get("demo")==="1")return;void load()},[proposalId]);
  async function act(fn){setBusy(true);setError("");try{const x=await fn();setData(x);setContent(x.current_content||"")}catch(e){setError(e.message)}finally{setBusy(false)}}
  if(!data)return <section className="panel"><div className="empty">{error||"Loading proposal workspace…"}</div></section>;
  return <section className="panel proposal-workspace">

@@ -4,7 +4,7 @@ import {api} from "./api";
 export default function AutonomousIntelligence(){
  const [queue,setQueue]=useState([]),[outreach,setOutreach]=useState(null),[revenue,setRevenue]=useState(null),[error,setError]=useState(""),[busy,setBusy]=useState(false);
  async function load(){setBusy(true);setError("");try{const [q,o,r]=await Promise.all([api.acquisitionQueue(),api.outreachStrategy(),api.revenue()]);setQueue(q);setOutreach(o);setRevenue(r)}catch(e){setError(e.message)}finally{setBusy(false)}}
- useEffect(()=>{void load()},[]);
+ useEffect(()=>{if(new URLSearchParams(window.location.search).get("demo")==="1")return;void load()},[]);
  async function execute(item){setBusy(true);try{await api.acquisitionAction(item.id,{action:item.recommended_action});await load()}catch(e){setError(e.message);setBusy(false)}}
  return <section className="panel" style={{marginTop:20}}>
   <div className="panel-head"><div><div className="eyebrow">PHASES 16–18 · CLOSED LOOP</div><h2>Autonomous Acquisition Intelligence</h2></div><button className="secondary" onClick={load} disabled={busy}>{busy?"Updating…":"Refresh intelligence"}</button></div>
