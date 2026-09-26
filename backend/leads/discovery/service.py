@@ -10,10 +10,10 @@ class DiscoveryService:
     def __init__(self):
         self.providers = {"mock": MockDiscoveryProvider()}
 
-    def discover(self, query: str, source: str = "live") -> dict[str, Any]:
+    def discover(self, query: str, source: str = "live", **kwargs) -> dict[str, Any]:
         query = (query or "").strip()
         if source == "live":
-            result = discover_live(query)
+            result = discover_live(query, **kwargs)
             return {"source": "web_search", **result}
         if source not in self.providers:
             raise DiscoveryError(f"Unknown discovery source: {source}")
