@@ -136,32 +136,15 @@ def select_profile(ttl_hours,only_if_due=True,strategy_id=None):
     profiles=[p for p in DISCOVERY_PROFILES if p["id"]==arm["profile_id"]] if not explicit else DISCOVERY_PROFILES
     candidates=[]
     for p in profiles:
-        variant=select_query_variant(p["id"],strategy["id"])
-        q=_strategy_query(p,strategy,variant)
-        cache=DiscoveryQueryCache.objects.filter(profile_id=p["id"],normalized_query=normalize_query(q)).first()
-        searched=cache.searched_at if cache else None
-        if only_if_due and searched and searched>stale: continue
-        candidates.append((searched or datetime.min.replace(tzinfo=now.tzinfo),p,q,variant))
+        for variant_id,_ in QUERY_VARIANTS:
+            q=_strategy_query(p,strategy,variant_id)
+            cache=DiscoveryQueryCache.objects.filter(profile_id=p["id"],normalized_query=normalize_query(q)).first()
+            searched=cache.searched_at if cache else None
+            if only_if_due and searched and searched>stale: continue
+            variant=_variant_score(p["id"],strategy["id"],variant_id)
+            candidates.append((searched or datetime.min.replace(tzinfo=now.tzinfo),-variant["ucb"] if math.isfinite(variant["ucb"]) else float("-inf"),p,q,variant_id))
     if not candidates:
-        candidates=[(DiscoveryQueryCache.objects.filter(profile_id=p["id"]).order_by("searched_at").values_list("searched_at",flat=True).first() or datetime.min.replace(tzinfo=now.tzinfo),p,_strategy_query(p,strategy,"base"),"base") for p in profiles]
-    _,p,q,variant=min(candidates,key=lambda x:x[0])
+        candidates=[(DiscoveryQueryCache.objects.filter(profile_id=p["id"]).order_by("searched_at").values_list("searched_at",flat=True).first() or datetime.min.replace(tzinfo=now.tzinfo),0,p,_strategy_query(p,strategy,"base"),"base") for p in profiles]
+    _,_,p,q,variant=min(candidates,key=lambda x:(x[0],x[1]))
     return {**p,"strategy_id":strategy["id"],"query":q,"query_variant":variant,"query_family":query_family(p["id"],strategy["id"]),"selection_mode":"adaptive" if explicit else "contextual-bandit","context_size":select_context_size(p["id"],strategy["id"]),"domain_exclusions":domain_exclusions()}
 
-def profile_performance(lookback_days=None):
-    return [{"profile":p,"strategies":[{"strategy":s,"performance":_score(s["id"],lookback_days)} for s in STRATEGIES]} for p in DISCOVERY_PROFILES]
-
-def strategy_performance(lookback_days=None): return [{"strategy":s,"performance":_score(s["id"],lookback_days)} for s in STRATEGIES]
-def arm_performance(lookback_days=None): return [_arm_score(p["id"],s["id"],lookback_days) for p in DISCOVERY_PROFILES for s in STRATEGIES]
-def public_profiles(): return [{**p,"strategies":STRATEGIES} for p in DISCOVERY_PROFILES]
-
-def reusable_cache(query,profile_id=None,ttl_hours=None):
-    ttl=ttl_hours or settings.DISCOVERY_QUERY_CACHE_TTL_HOURS
-    cutoff=timezone.now()-timezone.timedelta(hours=ttl)
-    signature=query_signature(query)
-    qs=DiscoveryQueryCache.objects.filter(searched_at__gte=cutoff,query_signature=signature).exclude(result_payload=[])
-    if profile_id: qs=qs.exclude(profile_id=profile_id)
-    return qs.order_by("-searched_at").first()
-
-def query_similarity(query_a,query_b):
-    a=set(re.findall(r"[a-z0-9]{3,}",normalize_query(query_a))); b=set(re.findall(r"[a-z0-9]{3,}",normalize_query(query_b)))
-    return len(a&b)/max(len(a|b),1)
