@@ -81,7 +81,10 @@ def _refresh_domain_outcomes(items):
         won=sum(1 for lead in leads if lead.status=="won")
         stat=DiscoveryDomainStat.objects.filter(domain=d).first()
         if stat:
-            stat.qualified=max(stat.qualified,qualified); stat.replied=max(stat.replied,replied); stat.won=max(stat.won,won); stat.save(update_fields=["qualified","replied","won","updated_at"])
+            stat.qualified=max(stat.qualified,qualified); stat.replied=max(stat.replied,replied); stat.won=max(stat.won,won)
+            if stat.results>=settings.DISCOVERY_DOMAIN_MIN_RESULTS and stat.qualified/max(stat.results,1)<settings.DISCOVERY_DOMAIN_BLOCK_QUALIFIED_RATE:
+                stat.blocked_until=timezone.now()+timezone.timedelta(days=7)
+            stat.save(update_fields=["qualified","replied","won","blocked_until","updated_at"])
 
 def _find_semantic_reuse(query,profile_id,strategy_id):
     cache=reusable_cache(query,profile_id=profile_id)
