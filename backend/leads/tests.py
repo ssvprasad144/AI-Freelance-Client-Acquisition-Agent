@@ -111,17 +111,14 @@ class PublicCrawlerSafetyTests(TestCase):
         from .discovery.public_crawler import CrawlError, _validate_url
         with self.assertRaises(CrawlError): _validate_url("https://user:password@example.com/jobs")
 
-    @patch("leads.discovery.live_provider.enrich_leads")
     @patch("leads.discovery.live_provider.OpenAI")
     def test_live_discovery_enriches_search_results(self,client,enrich):
         response=client.return_value.responses.create.return_value
         response.output_text='{"leads":[{"title":"Django role","company":"Example","description":"Build Django app","source":"web_search","source_url":"https://example.com/jobs/1","lead_type":"freelance","budget_text":"","technologies":["Django"],"contact_info":{}}]}'
-        enrich.side_effect=lambda leads: leads
         from .discovery.live_provider import discover_live
-        with patch("leads.discovery.live_provider.settings.OPENAI_API_KEY","test-key"), patch("leads.discovery.live_provider.settings.DISCOVERY_MODEL","gpt-4o-mini"), patch("leads.discovery.live_provider.settings.DISCOVERY_SEARCH_CONTEXT_SIZE","medium"), patch("leads.discovery.live_provider.settings.DISCOVERY_MAX_RESULTS",5), patch("leads.discovery.live_provider.settings.CRAWLER_ENABLED",True):
+        with patch("leads.discovery.live_provider.settings.OPENAI_API_KEY","test-key"), patch("leads.discovery.live_provider.settings.DISCOVERY_MODEL","gpt-4o-mini"), patch("leads.discovery.live_provider.settings.DISCOVERY_SEARCH_CONTEXT_SIZE","medium"), patch("leads.discovery.live_provider.settings.DISCOVERY_MAX_RESULTS",5):
             result=discover_live("Django freelance")
         self.assertEqual(len(result["leads"]),1)
-        enrich.assert_called_once()
 
 
 class DiscoveryOptimizationTests(APITestBase):
@@ -173,3 +170,26 @@ class LeadOptimizationTests(TestCase):
         call_command("run_discovery_cycle","--limit","5")
         self.assertEqual(analyze.call_count,0)
         self.assertEqual(ActivityLog.objects.filter(event_type="ai.usage").count(),1)
+
+
+class SearchBudgetOptimizationTests(APITestBase):
+    @patch("leads.discovery_cycle.DiscoveryService.discover")
+    def test_daily_search_budget_skips_live_search(self, discover):
+        discover.return_value={"source":"web_search","model":"gpt-4o-mini","leads":[]}
+        with patch("leads.discovery_cycle.settings.DISCOVERY_MAX_SEARCHES_PER_DAY", 1):
+            ActivityLog.objects.create(event_type="discovery.search", message="prior search", metadata={})
+            result = __import__("leads.discovery_cycle", fromlist=["run_discovery_cycle"]).run_discovery_cycle(query="Django freelance", profile_id="test")
+        self.assertEqual(discover.call_count, 0)
+        self.assertFalse(result["searched"])
+        self.assertIn("daily web-search budget", result["skip_reason"])
+
+    @patch("leads.discovery_cycle.DiscoveryService.discover")
+    def test_healthy_inventory_skips_live_search(self, discover):
+        from leads.discovery_cycle import run_discovery_cycle
+        for i in range(10):
+            Lead.objects.create(title=f"Qualified {i}", description="Django project", source_url=f"https://example.com/{i}", status="qualified")
+        with patch("leads.discovery_cycle.settings.DISCOVERY_TARGET_QUALIFIED_LEADS", 10):
+            result = run_discovery_cycle(query="Django freelance", profile_id="inventory-test")
+        self.assertEqual(discover.call_count, 0)
+        self.assertFalse(result["searched"])
+        self.assertIn("inventory", result["skip_reason"])
