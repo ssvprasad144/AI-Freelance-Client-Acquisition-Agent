@@ -257,14 +257,3 @@ services:
         value: "60"
       - key: SECURE_SSL_REDIRECT
         value: "true"
-
-
-  - type: web
-    name: ai-freelance-client-agent-frontend
-    runtime: static
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
-    rootDir: frontend
-    envVars:
-      - key: VITE_API_BASE_URL
-        sync: false
