@@ -87,3 +87,72 @@ class FollowUpLifecycleTests(TestCase):
             FollowUp.objects.filter(status="due").count(),
             1,
         )
+
+
+from unittest.mock import patch
+
+
+class DiscoveryWorkerTests(TestCase):
+    def _result(self):
+        return {
+            "source": "web_search",
+            "model": "gpt-4o-mini",
+            "leads": [{
+                "title": "AI Automation Dashboard",
+                "company": "Example Client",
+                "description": "Build an AI-powered Django automation dashboard.",
+                "source": "web_search",
+                "source_url": "https://example.com/opportunities/automation",
+                "lead_type": "freelance",
+                "budget_text": "$1,000",
+                "technologies": ["Django", "AI"],
+                "contact_info": {},
+            }],
+        }
+
+    @patch("leads.discovery_cycle.analyze_lead")
+    @patch("leads.discovery_cycle.DiscoveryService.discover")
+    def test_discovery_worker_discovers_and_qualifies(self, discover, analyze):
+        discover.return_value = self._result()
+        analyze.return_value = {
+            "relevant": True,
+            "match_score": 85,
+            "service_match": "AI Products",
+            "requirements": ["Django"],
+            "pain_points": [],
+            "recommended_approach": "Build the smallest useful workflow first.",
+            "matching_projects": ["AI Business Automation Dashboard"],
+            "confidence": 90,
+            "model": "gpt-4o-mini",
+            "input_tokens": 10,
+            "output_tokens": 10,
+        }
+        call_command("run_discovery_cycle", "--source", "live", "--limit", "5")
+        self.assertEqual(Lead.objects.count(), 1)
+        self.assertEqual(Lead.objects.get().status, "qualified")
+        self.assertEqual(LeadAnalysis.objects.count(), 1)
+        self.assertEqual(ActivityLog.objects.filter(event_type="discovery.completed").count(), 1)
+
+    @patch("leads.discovery_cycle.analyze_lead")
+    @patch("leads.discovery_cycle.DiscoveryService.discover")
+    def test_discovery_worker_deduplicates_on_repeat_cycle(self, discover, analyze):
+        discover.return_value = self._result()
+        analyze.return_value = {
+            "relevant": False,
+            "match_score": 20,
+            "service_match": "Needs review",
+            "requirements": [],
+            "pain_points": [],
+            "recommended_approach": "Review manually.",
+            "matching_projects": [],
+            "confidence": 30,
+            "model": "gpt-4o-mini",
+            "input_tokens": 10,
+            "output_tokens": 10,
+        }
+        call_command("run_discovery_cycle", "--limit", "5")
+        call_command("run_discovery_cycle", "--limit", "5")
+        self.assertEqual(Lead.objects.count(), 1)
+        self.assertEqual(LeadAnalysis.objects.count(), 1)
+        self.assertEqual(analyze.call_count, 1)
+        self.assertEqual(ActivityLog.objects.filter(event_type="discovery.completed").count(), 2)
