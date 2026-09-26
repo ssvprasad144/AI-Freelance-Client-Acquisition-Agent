@@ -66,3 +66,9 @@ The loop interval defaults to `DISCOVERY_WORKER_INTERVAL=3600` seconds and is co
 Windows launcher: `start-discovery-worker.bat`.
 
 Human approval remains required for proposals and follow-ups, and external outreach is not sent by the worker.
+
+## Production deployment
+
+The backend supports PostgreSQL through `DATABASE_URL`, production HTTPS settings, and a Gunicorn WSGI process. `render.yaml` defines the API web service and the separate discovery worker. Configure secrets and environment-specific values in the hosting platform before deploying; do not commit real credentials.
+
+Required production variables include `DJANGO_SECRET_KEY`, `DATABASE_URL`, `OPENAI_API_KEY`, `ALLOWED_HOSTS`, and `CORS_ALLOWED_ORIGINS`. The discovery and follow-up workers remain separate from the API process. External outreach is not enabled by these services.
