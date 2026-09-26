@@ -36,7 +36,22 @@ def classify_reply(reply):
             return {"sentiment":"negative","intent":"not_interested","urgency":"low","recommended_action":"Close the lead politely and do not continue contacting unless invited."}
         return {"sentiment":"neutral","intent":"other","urgency":"low","recommended_action":"Review the reply and determine whether clarification is needed."}
     client=OpenAI(api_key=settings.OPENAI_API_KEY)
-    response=client.responses.create(model=settings.OPENAI_MODEL,input=[{"role":"system","content":REPLY_PROMPT},{"role":"user","content":reply.message}])
+    response=client.responses.create(
+        model=settings.OPENAI_MODEL,
+        input=[{"role":"system","content":REPLY_PROMPT},{"role":"user","content":reply.message[:settings.AI_MAX_REPLY_CHARS]}],
+        max_output_tokens=settings.AI_REPLY_MAX_OUTPUT_TOKENS,
+    )
+    usage=getattr(response,"usage",None)
+    input_tokens=int(getattr(usage,"input_tokens",0) or 0) if usage else 0
+    output_tokens=int(getattr(usage,"output_tokens",0) or 0) if usage else 0
+    cached_details=getattr(usage,"input_tokens_details",None) if usage else None
+    cached_tokens=int(getattr(cached_details,"cached_tokens",0) or 0) if cached_details else 0
+    ActivityLog.objects.create(
+        lead=reply.lead,
+        event_type="ai.usage",
+        message="Reply classification AI usage recorded.",
+        metadata={"operation":"reply_classification","model":settings.OPENAI_MODEL,"input_tokens":input_tokens,"output_tokens":output_tokens,"cached_input_tokens":cached_tokens},
+    )
     return json.loads(response.output_text)
 
 def send_email(outreach):
