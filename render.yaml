@@ -6,6 +6,29 @@ services:
     buildCommand: pip install -r requirements.txt && python manage.py migrate
     startCommand: gunicorn config.wsgi:application
     healthCheckPath: /api/health/
+    envVars: &app_env
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: DEBUG
+        value: "false"
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: DISCOVERY_MODEL
+        value: gpt-4o-mini
+      - key: DISCOVERY_WORKER_INTERVAL
+        value: "3600"
+      - key: FOLLOWUP_WORKER_INTERVAL
+        value: "60"
+      - key: SECURE_SSL_REDIRECT
+        value: "true"
 
   - type: worker
     name: ai-freelance-client-agent-discovery
@@ -13,3 +36,12 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt && python manage.py migrate
     startCommand: python manage.py run_discovery_cycle --loop
+    envVars: *app_env
+
+  - type: worker
+    name: ai-freelance-client-agent-followups
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && python manage.py migrate
+    startCommand: python manage.py process_due_followups --loop
+    envVars: *app_env
