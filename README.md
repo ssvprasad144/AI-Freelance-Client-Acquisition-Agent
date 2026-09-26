@@ -46,3 +46,23 @@ The intended lifecycle is:
 `Draft → Approved → Due → Ready for Action`
 
 External outreach remains a separate, human-controlled step. The worker does not send email, platform messages, or other outbound communication.
+
+## Automated discovery worker
+
+The discovery worker runs live public-web discovery, deduplicates results, and automatically qualifies previously unanalyzed new leads using the configured GPT-4o-mini qualification model. It does not send outbound messages.
+
+Run one cycle:
+
+    cd backend
+    python manage.py run_discovery_cycle
+
+Run continuously:
+
+    cd backend
+    python manage.py run_discovery_cycle --loop
+
+The loop interval defaults to `DISCOVERY_WORKER_INTERVAL=3600` seconds and is configurable through the environment. Each cycle records a `discovery.completed` activity event with discovered, created, duplicate, analyzed, and qualified counts. The dashboard exposes the latest discovery timestamp and result summary.
+
+Windows launcher: `start-discovery-worker.bat`.
+
+Human approval remains required for proposals and follow-ups, and external outreach is not sent by the worker.
