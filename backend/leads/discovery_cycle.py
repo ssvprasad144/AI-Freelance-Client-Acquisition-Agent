@@ -45,7 +45,7 @@ def _store(items,profile_id="",strategy_id="",query=""):
 
 def _fresh_qualified_inventory():
     now=timezone.now(); cutoff=now-timezone.timedelta(hours=settings.DISCOVERY_FRESHNESS_HOURS)
-    return Lead.objects.filter(status="qualified",last_verified_at__gte=cutoff).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).count()
+    return Lead.objects.filter(status="qualified").filter(models.Q(last_verified_at__gte=cutoff)|models.Q(last_verified_at__isnull=True,updated_at__gte=cutoff)).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).count()
 
 def _daily_search_count():
     return ActivityLog.objects.filter(event_type="discovery.search",created_at__date=timezone.localdate()).count()
