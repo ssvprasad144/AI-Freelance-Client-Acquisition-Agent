@@ -12,11 +12,10 @@ def record_meeting_event(meeting,event_type):
     if meeting.lead_id:
         AcquisitionEvent.objects.create(lead=meeting.lead,event_type=event_type,source=meeting.lead.source,profile_id=meeting.lead.discovery_profile,strategy_id=meeting.lead.discovery_strategy,query=meeting.lead.discovery_query,metadata={"meeting_id":meeting.id})
 def apply_meeting_status(meeting,new_status):
+    previous_status=meeting.status
     meeting.status=new_status
     if new_status=="completed" and not meeting.completed_at: meeting.completed_at=timezone.now()
     meeting.save()
     mapping={"requested":"meeting_requested","scheduled":"meeting_scheduled","completed":"meeting_completed"}
-    if new_status in mapping: record_meeting_event(meeting,mapping[new_status])
-    if new_status=="completed" and meeting.lead and meeting.lead.status=="replied":
-        meeting.lead.status="contacted"; meeting.lead.save(update_fields=["status","updated_at"])
+    if new_status != previous_status and new_status in mapping: record_meeting_event(meeting,mapping[new_status])
     return meeting
