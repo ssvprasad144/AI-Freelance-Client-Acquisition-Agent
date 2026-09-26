@@ -57,7 +57,7 @@ VALID_ACTIONS={
  "qualify":{"from":["new"],"to":"qualified"},
  "generate_proposal":{"from":["qualified"],"to":"proposal"},
  "approve_proposal":{"from":["proposal"],"to":"proposal"},
- "book_meeting":{"from":["replied"],"to":"replied"},
+ "book_meeting":{"from":["replied"],"to":"replied"},\n "plan_outreach":{"from":["proposal"],"to":"proposal"},
  "await_reply":{"from":["contacted"],"to":"contacted"},
  "await_meeting":{"from":["replied"],"to":"replied"},
  "review":{"from":["new","qualified","proposal","contacted","replied"],"to":None},
