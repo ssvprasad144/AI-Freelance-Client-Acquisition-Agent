@@ -53,8 +53,8 @@ class Phase17Tests(TestCase):
     def test_health_endpoint_reports_database(self):
         response=self.api.get("/api/health/")
         self.assertEqual(response.status_code,200)
-        self.assertEqual(response.data["status"],"healthy")
-        self.assertEqual(response.data["database"],"ok")
+        self.assertEqual(response.json()["status"],"healthy")
+        self.assertEqual(response.json()["database"],"ok")
 
     @patch("leads.views.send_email")
     def test_email_send_is_idempotent(self, mock_send):
