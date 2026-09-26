@@ -65,6 +65,7 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
             "external_web_access": True,
         }],
         tool_choice="required",
+        text={"format": {"type": "json_object"}},
         input=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": json.dumps(prompt)},
