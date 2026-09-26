@@ -22,6 +22,13 @@ class Phase17Tests(TestCase):
         self.assertEqual(approved.status,"approved")
         self.assertEqual(self.lead.outreach.filter(medium="email",status="approved").count(),1)
 
+    def test_regeneration_preserves_approval(self):
+        plan=create_plan(self.lead,"email","A")
+        mark_approved(plan)
+        regenerated=create_plan(self.lead,"email","A")
+        self.assertEqual(regenerated.status,"approved")
+        self.assertEqual(regenerated.attempt_count,1)
+
     def test_manual_channel_never_marked_automatic(self):
         plan=create_plan(self.lead,"linkedin","B")
         self.assertFalse(plan.automatic)
