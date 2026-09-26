@@ -59,7 +59,10 @@ class PublicCrawlerSafetyTests(TestCase):
         with self.assertRaises(CrawlError): _validate_url("https://user:password@example.com/jobs")
     @patch("leads.discovery.live_provider.OpenAI")
     def test_live_discovery_returns_search_results_without_crawling(self,client):
-        response=client.return_value.responses.create.return_value; response.output_text='{"leads":[{"title":"Django role","company":"Example","description":"Build Django app","source":"web_search","source_url":"https://example.com/jobs/1","lead_type":"freelance","budget_text":"","technologies":["Django"],"contact_info":{}}]}'; from .discovery.live_provider import discover_live
+        client.return_value.responses.create.side_effect=[
+            type("SearchResponse",(),{"output_text":"Search finding: Django role at Example, source https://example.com/jobs/1"})(),
+            type("StructuredResponse",(),{"output_text":'{"leads":[{"title":"Django role","company":"Example","description":"Build Django app","source":"web_search","source_url":"https://example.com/jobs/1","action_url":"https://example.com/jobs/1","lead_type":"freelance","budget_text":"","technologies":["Django"],"contact_info":{}}]}'})(),
+        ]; from .discovery.live_provider import discover_live
         with patch("leads.discovery.live_provider.settings.OPENAI_API_KEY","test-key"),patch("leads.discovery.live_provider.settings.DISCOVERY_MODEL","gpt-4o-mini"),patch("leads.discovery.live_provider.settings.DISCOVERY_SEARCH_CONTEXT_SIZE","medium"),patch("leads.discovery.live_provider.settings.DISCOVERY_MAX_RESULTS",5): result=discover_live("Django freelance")
         self.assertEqual(len(result["leads"]),1)
 
