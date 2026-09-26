@@ -24,4 +24,10 @@ FOLLOWUP_WORKER_INTERVAL=int(os.getenv("FOLLOWUP_WORKER_INTERVAL","60"))
 DISCOVERY_WORKER_INTERVAL=int(os.getenv("DISCOVERY_WORKER_INTERVAL","3600"))
 MOCK_LEADS_FILE=BASE_DIR/"leads"/"data"/"mock_freelance_leads_100.json"
 FREELANCE_SEARCH_PROFILE={"name":"SSVPrasad","services":["AI Products","Business Automation","Full-Stack Development","Interactive Web"],"skills":["Python","C++","JavaScript","SQL","React","Vite","Three.js","React Three Fiber","Django","Django REST Framework","PostgreSQL","SQLite","OpenAI","webhooks","GitHub","Render","GitHub Pages","Cloudinary","Linux"],"projects":[{"name":"AI Business Automation Dashboard","evidence":"AI workflow demos, execution logging, dashboard and backend APIs."},{"name":"CareerInnTech","evidence":"Django-based career platform with AI interview functionality and PostgreSQL."},{"name":"AI Interview","evidence":"Voice-first AI mock interview experience with Django and frontend integration."},{"name":"3D Motion Portfolio","evidence":"React/Three.js portfolio focused on interactive web experiences."}]}
-REST_FRAMEWORK={"DEFAULT_RENDERER_CLASSES":["rest_framework.renderers.JSONRenderer","rest_framework.renderers.BrowsableAPIRenderer"]}\nif not DEBUG:\n    SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO","https")\n    SECURE_SSL_REDIRECT=os.getenv("SECURE_SSL_REDIRECT","true").lower()=="true"\n    SESSION_COOKIE_SECURE=True\n    CSRF_COOKIE_SECURE=True\n    X_FRAME_OPTIONS="DENY"
+REST_FRAMEWORK={"DEFAULT_RENDERER_CLASSES":["rest_framework.renderers.JSONRenderer","rest_framework.renderers.BrowsableAPIRenderer"]}
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO","https")
+    SECURE_SSL_REDIRECT=os.getenv("SECURE_SSL_REDIRECT","true").lower()=="true"
+    SESSION_COOKIE_SECURE=True
+    CSRF_COOKIE_SECURE=True
+    X_FRAME_OPTIONS="DENY"
