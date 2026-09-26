@@ -192,3 +192,7 @@ Outreach endpoints include:
 - POST /api/outreach/<id>/open/
 - POST /api/outreach/<id>/mark-submitted/
 - POST /api/outreach/<id>/send/ (email only, approved + provider gated)
+
+
+## Phase 16-18 Production Hardening
+Autonomous acquisition actions, safe multichannel outreach, revenue attribution, continuous learning, and deployment-safe migrations are enabled with approval-required automation by default.
