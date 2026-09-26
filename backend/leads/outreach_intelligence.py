@@ -1,4 +1,4 @@
-from django.utils import timezone
+from django.utils import timezone\nfrom django.conf import settings
 from .models import Lead, OutreachPlan, Outreach
 
 CHANNELS={"email":{"automatic":True,"action":"send_email"},"linkedin":{"automatic":False,"action":"manual_submit"},"marketplace":{"automatic":False,"action":"manual_submit"},"contact_form":{"automatic":False,"action":"manual_submit"},"community":{"automatic":False,"action":"manual_submit"}}
