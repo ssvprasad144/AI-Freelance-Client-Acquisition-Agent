@@ -25,6 +25,8 @@ services:
         value: gpt-4o-mini
       - key: DISCOVERY_WORKER_INTERVAL
         value: "21600"
+      - key: DISCOVERY_QUERY_CACHE_TTL_HOURS
+        value: "36"
       - key: LOCAL_PREFILTER_MIN_SCORE
         value: "20"
       - key: AI_MAX_LEAD_DESCRIPTION_CHARS
@@ -47,7 +49,7 @@ services:
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt && python manage.py migrate
-    startCommand: python manage.py run_acquisition_cycle --loop
+    startCommand: python manage.py run_discovery_cycle --loop
     envVars:
       - key: DJANGO_SECRET_KEY
         sync: false
