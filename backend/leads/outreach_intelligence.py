@@ -1,5 +1,5 @@
 from django.utils import timezone
-from .models import Lead, OutreachPlan
+from .models import Lead, OutreachPlan, Outreach
 
 CHANNELS={"email":{"automatic":True,"action":"send_email"},"linkedin":{"automatic":False,"action":"manual_submit"},"marketplace":{"automatic":False,"action":"manual_submit"},"contact_form":{"automatic":False,"action":"manual_submit"},"community":{"automatic":False,"action":"manual_submit"}}
 STOP_STATUSES={"replied","won","lost","archived"}
@@ -59,5 +59,19 @@ def channel_metrics():
 
 def mark_approved(plan):
     if not eligible(plan.lead): raise ValueError("Outreach must stop because the lead has replied, progressed to a meeting, or reached a terminal state.")
-    plan.status="approved"; plan.approved_at=timezone.now(); plan.save(update_fields=["status","approved_at","updated_at"])
+    if plan.attempt_count >= int(getattr(settings,"OUTREACH_MAX_ATTEMPTS_PER_LEAD",3)):
+        raise ValueError("Outreach fatigue protection: maximum attempts reached.")
+    if plan.last_attempt_at:
+        delay_hours=float(getattr(settings,"OUTREACH_MIN_DELAY_HOURS",48))
+        if (timezone.now()-plan.last_attempt_at).total_seconds() < delay_hours*3600:
+            raise ValueError("Outreach fatigue protection: minimum delay has not elapsed.")
+    plan.status="approved"; plan.approved_at=timezone.now(); plan.attempt_count += 1; plan.last_attempt_at=timezone.now()
+    plan.save(update_fields=["status","approved_at","attempt_count","last_attempt_at","updated_at"])
+    existing=Outreach.objects.filter(lead=plan.lead,medium=plan.channel,message=plan.message,status__in=["draft","approved","opened"]).order_by("-created_at").first()
+    if not existing:
+        Outreach.objects.create(lead=plan.lead,channel=plan.channel,medium=plan.channel,
+            action_type="send_email" if plan.channel=="email" else "manual_submit",
+            message=plan.message,destination_url=plan.destination_url,status="approved")
+    else:
+        existing.status="approved"; existing.save(update_fields=["status"])
     return plan
