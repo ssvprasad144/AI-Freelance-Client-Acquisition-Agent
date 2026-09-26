@@ -86,15 +86,21 @@ def create_followup(request, pk=None):
     ActivityLog.objects.create(lead=lead,event_type="followup.created",message="Follow-up draft created. No message was sent.",metadata={"followup_id":followup.id})
     return Response(FollowUpSerializer(followup).data)
 
-@api_view(["GET"])
-def due_followups(request):
+@api_view(["POST"])
+def process_due_followups(request):
     now=timezone.now()
     due=FollowUp.objects.filter(status="approved",scheduled_at__lte=now).select_related("lead").order_by("scheduled_at")
+    processed=0
     with transaction.atomic():
         for followup in due:
             followup.status="due"
             followup.save(update_fields=["status"])
             ActivityLog.objects.create(lead=followup.lead,event_type="followup.due",message="Approved follow-up reached its scheduled time and is ready for action. No message was sent.",metadata={"followup_id":followup.id})
+            processed+=1
+    return Response({"processed":processed,"due":FollowUp.objects.filter(status="due").count(),"sent":False})
+
+@api_view(["GET"])
+def due_followups(request):
     queue=FollowUp.objects.filter(status="due").select_related("lead").order_by("scheduled_at")[:100]
     return Response(FollowUpSerializer(queue,many=True).data)
 
