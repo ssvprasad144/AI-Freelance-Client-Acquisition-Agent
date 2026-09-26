@@ -1,5 +1,5 @@
 from django.utils import timezone
-from .models import Lead, OutreachPlan
+from .models import Lead, OutreachPlan, Outreach
 
 CHANNELS={"email":{"automatic":True,"action":"send_email"},"linkedin":{"automatic":False,"action":"manual_submit"},"marketplace":{"automatic":False,"action":"manual_submit"},"contact_form":{"automatic":False,"action":"manual_submit"},"community":{"automatic":False,"action":"manual_submit"}}
 STOP_STATUSES={"replied","won","lost","archived"}
