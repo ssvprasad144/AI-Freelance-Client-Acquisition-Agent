@@ -45,6 +45,7 @@ def _extract_json(text: str) -> dict[str, Any]:
 def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[str, Any]:
     if not settings.OPENAI_API_KEY:
         raise LiveDiscoveryError("OPENAI_API_KEY is required for live discovery.")
+
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
     prompt = {
         "profile": settings.FREELANCE_SEARCH_PROFILE,
@@ -57,27 +58,107 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
             "domain_exclusions": domain_exclusions,
         },
     }
-    response = client.responses.create(
-        model=settings.DISCOVERY_MODEL,
-        tools=[{
-            "type": "web_search",
-            "search_context_size": context_size or settings.DISCOVERY_SEARCH_CONTEXT_SIZE,
-            "external_web_access": True,
-        }],
-        tool_choice="required",
-        text={"format": {"type": "json_object"}},
-        input=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(prompt)},
-        ],
-    )
+
     try:
-        payload = _extract_json(response.output_text)
-    except (TypeError, json.JSONDecodeError) as exc:
-        raise LiveDiscoveryError("Live discovery returned invalid structured data.") from exc
+        # Web Search and JSON mode cannot be combined in one Responses API call.
+        # First gather grounded search findings, then normalize them in a second
+        # Responses API call that has no web_search tool and can use structured output.
+        search_response = client.responses.create(
+            model=settings.DISCOVERY_MODEL,
+            tools=[{
+                "type": "web_search",
+                "search_context_size": context_size or settings.DISCOVERY_SEARCH_CONTEXT_SIZE,
+                "external_web_access": True,
+            }],
+            tool_choice="required",
+            input=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": json.dumps(prompt)},
+            ],
+        )
+
+        search_text = (search_response.output_text or "").strip()
+        if not search_text:
+            raise LiveDiscoveryError("Live discovery returned no search findings.")
+
+        extraction_schema = {
+            "type": "object",
+            "properties": {
+                "leads": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "company": {"type": "string"},
+                            "description": {"type": "string"},
+                            "source": {"type": "string"},
+                            "source_url": {"type": "string"},
+                            "action_url": {"type": "string"},
+                            "lead_type": {
+                                "type": "string",
+                                "enum": ["freelance", "direct", "startup", "other"],
+                            },
+                            "budget_text": {"type": "string"},
+                            "technologies": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                            "contact_info": {"type": "object"},
+                        },
+                        "required": [
+                            "title", "company", "description", "source",
+                            "source_url", "action_url", "lead_type",
+                            "budget_text", "technologies", "contact_info",
+                        ],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["leads"],
+            "additionalProperties": False,
+        }
+
+        extraction_response = client.responses.create(
+            model=settings.DISCOVERY_MODEL,
+            input=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Convert the grounded web-search findings into the requested schema. "
+                        "Use only facts and URLs present in the findings. Never invent URLs, "
+                        "companies, budgets, contacts, or opportunities. Return an empty "
+                        "leads array when the findings do not contain suitable current opportunities."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps({
+                        "search_request": prompt,
+                        "search_findings": search_text,
+                    }),
+                },
+            ],
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "live_discovery_result",
+                    "strict": True,
+                    "schema": extraction_schema,
+                }
+            },
+        )
+
+        payload = _extract_json(extraction_response.output_text or "")
+    except LiveDiscoveryError:
+        raise
+    except Exception as exc:
+        raise LiveDiscoveryError("Live discovery provider request failed.") from exc
+
     leads = payload.get("leads", []) if isinstance(payload, dict) else []
     if not isinstance(leads, list):
         raise LiveDiscoveryError("Live discovery returned an invalid leads list.")
+
     cleaned = []
     for lead in leads:
         if not isinstance(lead, dict) or not lead.get("title") or not lead.get("description") or not lead.get("source_url"):
