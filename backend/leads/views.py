@@ -10,7 +10,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from .throttles import AIThrottle, DiscoveryThrottle
+from .throttles import AIThrottle, DiscoveryThrottle, LoginThrottle
 from .ai_service import analyze_lead, generate_proposal
 from .discovery.live_provider import LiveDiscoveryError
 from .discovery.mock_provider import DiscoveryError
@@ -43,6 +43,7 @@ def health(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([LoginThrottle])
 def login(request):
     user=authenticate(request,username=str(request.data.get("username") or "").strip(),password=str(request.data.get("password") or ""))
     if not user:return Response({"detail":"Invalid username or password."},status=400)
