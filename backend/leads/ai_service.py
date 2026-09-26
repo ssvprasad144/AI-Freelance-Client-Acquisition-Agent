@@ -6,6 +6,7 @@ from openai import OpenAI
 
 from .acquisition import personalize_proposal
 from .knowledge import PROFILE
+from .models import ActivityLog
 
 SYSTEM_PROMPT = """You are a careful freelance lead qualification assistant.
 Analyze the supplied lead against the developer profile.
@@ -62,8 +63,8 @@ def _usage(response):
     return (
         int(getattr(usage, "input_tokens", 0) or 0) if usage else 0,
         int(getattr(usage, "output_tokens", 0) or 0) if usage else 0,
-        int(getattr(usage, "input_tokens_details", None).cached_tokens or 0)
-        if usage and getattr(usage, "input_tokens_details", None) else 0,
+        int(getattr(getattr(usage, "input_tokens_details", None), "cached_tokens", 0) or 0)
+        if usage else 0,
     )
 
 
@@ -134,7 +135,6 @@ def generate_proposal(lead, analysis) -> str:
         max_output_tokens=settings.AI_PROPOSAL_MAX_OUTPUT_TOKENS,
     )
     input_tokens, output_tokens, cached_tokens = _usage(response)
-    ActivityLog = __import__("leads.models", fromlist=["ActivityLog"]).ActivityLog
     ActivityLog.objects.create(
         lead=lead,
         event_type="ai.usage",
