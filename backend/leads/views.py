@@ -369,8 +369,8 @@ def create_meeting(request):
         try: contact=Contact.objects.get(pk=contact_id)
         except Contact.DoesNotExist: return Response({"detail":"Contact not found."},status=404)
         if client and contact.client_id!=client.id: return Response({"detail":"Contact does not belong to this client."},status=400)
-    meeting=Meeting.objects.create(lead=lead,client=client,contact_id=contact_id,status=status_value,scheduled_at=request.data.get("scheduled_at"),meeting_url=str(request.data.get("meeting_url") or ""),notes=str(request.data.get("notes") or ""),outcome=str(request.data.get("outcome") or ""),next_action=str(request.data.get("next_action") or ""))
-    sync_meeting_context(meeting); apply_meeting_status(meeting,meeting.status)
+    meeting=Meeting.objects.create(lead=lead,client=client,contact_id=contact_id,status="requested",scheduled_at=request.data.get("scheduled_at"),meeting_url=str(request.data.get("meeting_url") or ""),notes=str(request.data.get("notes") or ""),outcome=str(request.data.get("outcome") or ""),next_action=str(request.data.get("next_action") or ""))
+    sync_meeting_context(meeting); apply_meeting_status(meeting,status_value)
     return Response(MeetingSerializer(meeting).data,status=201)
 
 @api_view(["PATCH","PUT"])
@@ -379,9 +379,11 @@ def update_meeting(request,pk):
     except Meeting.DoesNotExist: return Response({"detail":"Meeting not found."},status=404)
     allowed=["status","scheduled_at","meeting_url","notes","outcome","next_action","completed_at"]
     if "status" in request.data and str(request.data["status"]) not in {x[0] for x in Meeting.STATUS}: return Response({"detail":"Invalid meeting status."},status=400)
+    requested_status=meeting.status
+    if "status" in request.data: requested_status=str(request.data["status"])
     for field in allowed:
-        if field in request.data: setattr(meeting,field,request.data[field])
-    sync_meeting_context(meeting); apply_meeting_status(meeting,meeting.status)
+        if field != "status" and field in request.data: setattr(meeting,field,request.data[field])
+    sync_meeting_context(meeting); apply_meeting_status(meeting,requested_status)
     return Response(MeetingSerializer(meeting).data)
 
 @api_view(["GET"])
