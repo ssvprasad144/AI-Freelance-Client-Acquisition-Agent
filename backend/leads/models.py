@@ -4,7 +4,7 @@ class Lead(models.Model):
     STATUS=[("new","New"),("qualified","Qualified"),("proposal","Proposal"),("contacted","Contacted"),("replied","Replied"),("won","Won"),("lost","Lost"),("archived","Archived")]
     TYPE=[("freelance","Freelance"),("direct","Direct"),("startup","Startup"),("other","Other")]
     title=models.CharField(max_length=255); normalized_title=models.CharField(max_length=255,blank=True,db_index=True); normalized_url=models.CharField(max_length=500,blank=True,db_index=True)
-    company=models.CharField(max_length=255,blank=True); description=models.TextField(); source=models.CharField(max_length=100,default="mock"); source_url=models.URLField(blank=True)
+    company=models.CharField(max_length=255,blank=True); description=models.TextField(); source=models.CharField(max_length=100,default="mock"); source_url=models.URLField(blank=True); action_url=models.URLField(blank=True)
     lead_type=models.CharField(max_length=30,choices=TYPE,default="freelance"); budget_text=models.CharField(max_length=255,blank=True)
     technologies=models.JSONField(default=list,blank=True); contact_info=models.JSONField(default=dict,blank=True); status=models.CharField(max_length=30,choices=STATUS,default="new")
     discovered_at=models.DateTimeField(null=True,blank=True); posted_at=models.DateTimeField(null=True,blank=True); expires_at=models.DateTimeField(null=True,blank=True); last_verified_at=models.DateTimeField(null=True,blank=True)
