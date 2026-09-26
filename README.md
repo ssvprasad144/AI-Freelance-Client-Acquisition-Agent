@@ -143,7 +143,7 @@ The crawler uses Python's standard library, so no additional scraping framework 
 
 ### Discovery cost optimization
 
-Automated discovery uses a rotating set of four focused profiles. The worker runs one profile per cycle rather than issuing all profile searches at once.
+Automated discovery uses a rotating set of four focused profiles. The worker runs one profile per cycle and uses measured search performance to balance exploration of under-tested profiles with exploitation of higher-yield profiles.
 
 The discovery pipeline is:
 
@@ -152,7 +152,7 @@ Search/inventory gate -> query freshness cache -> one rotating profile -> live w
 Default production settings:
 - discovery interval: 6 hours
 - query cache TTL: 72 hours
-- one rotating profile per cycle
+- one adaptive profile per cycle with a 2-search exploration floor
 - maximum 4 live searches per day
 - stop searching when 10 fresh qualified leads are available
 - search context: low
@@ -162,4 +162,4 @@ Default production settings:
 - proposals allowed only for qualified leads
 - outbound communication remains approval/provider gated
 
-This keeps recurring search volume bounded while still rotating across AI/automation, Django/full-stack, React/Three.js, and startup-MVP opportunities.
+The worker now measures qualified leads per search, created leads per search, replies per search, and wins per search. Profiles with fewer than the configured exploration minimum are tested first; after that, higher measured yield receives priority. The default learning window is 30 days. This keeps search spend bounded while progressively concentrating the budget on better-performing discovery strategies without permanently starving newer strategies.
