@@ -63,6 +63,8 @@ def _arm_score(profile_id,strategy_id,lookback_days=None,total_searches=None):
     reward=q+r*.35+w*1.5; total=max(total_searches or searches,searches); bonus=math.sqrt((2.0*math.log(max(total,2)))/searches)
     return {"profile_id":profile_id,"strategy_id":strategy_id,"searches":searches,"qualified_per_search":round(q,3),"reply_per_search":round(r,3),"win_per_search":round(w,3),"reward":round(reward,4),"ucb":round(reward+bonus,4)}
 
+def _last_search(strategy_id): return DiscoverySearchStat.objects.filter(strategy_id=strategy_id).order_by("-created_at").values_list("created_at",flat=True).first()
+
 def _last_arm_search(profile_id,strategy_id):
     return DiscoverySearchStat.objects.filter(profile_id=profile_id,strategy_id=strategy_id).order_by("-created_at").values_list("created_at",flat=True).first()
 
@@ -121,7 +123,8 @@ def preferred_search_window_open():
 def select_strategy(lookback_days=None):
     stats=[(s,_score(s["id"],lookback_days)) for s in STRATEGIES]
     under=[(s,v) for s,v in stats if v["searches"]<settings.DISCOVERY_MIN_EXPLORATION_SEARCHES]
-    if under: return min(under,key=lambda x:_last_arm_search("","") or timezone.make_aware(datetime.min))[0]
+    if under:
+        return min(under,key=lambda x:_last_search(x[0]["id"]) or timezone.make_aware(datetime.min))[0]
     return max(stats,key=lambda x:x[1]["score"])[0]
 
 def select_profile(ttl_hours,only_if_due=True,strategy_id=None):
