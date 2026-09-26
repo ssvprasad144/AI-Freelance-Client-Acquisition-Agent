@@ -2,7 +2,7 @@ import re
 from urllib.parse import urlsplit
 
 from django.conf import settings
-from django.db import transaction
+from django.db import models, transaction
 from django.utils import timezone
 
 from .ai_service import analyze_lead
