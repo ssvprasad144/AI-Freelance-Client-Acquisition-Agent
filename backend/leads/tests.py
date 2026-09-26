@@ -99,3 +99,23 @@ class SearchLearningTests(APITestBase):
     def test_analytics_exposes_search_learning(self):
         DiscoverySearchStat.objects.create(profile_id="django-fullstack",query="django freelance",normalized_query="django freelance",source="web_search",search_date=timezone.localdate(),raw_results=12,qualified=3)
         metrics=acquisition_metrics(); row=metrics["search_learning"][0]; self.assertEqual(row["searches"],1); self.assertEqual(row["qualified_per_search"],3.0)
+
+
+class AdaptiveSearchSelectionTests(TestCase):
+    def _stat(self, profile_id, qualified, created=0):
+        return DiscoverySearchStat.objects.create(profile_id=profile_id,query=profile_id,normalized_query=profile_id,source="web_search",search_date=timezone.localdate(),qualified=qualified,newly_created_leads=created)
+
+    def test_exploration_covers_under_sampled_profiles(self):
+        from .discovery.profiles import select_profile
+        self._stat("ai-automation", qualified=5, created=8)
+        selected=select_profile(72,only_if_due=False)
+        self.assertIn(selected["id"],["django-fullstack","interactive-web","startup-build"])
+
+    def test_exploitation_prefers_higher_measured_yield(self):
+        from .discovery.profiles import select_profile
+        for pid in ["ai-automation","django-fullstack","interactive-web","startup-build"]:
+            self._stat(pid,qualified=1,created=2)
+            self._stat(pid,qualified=1,created=2)
+        self._stat("ai-automation",qualified=8,created=10)
+        selected=select_profile(72,only_if_due=False)
+        self.assertEqual(selected["id"],"ai-automation")
