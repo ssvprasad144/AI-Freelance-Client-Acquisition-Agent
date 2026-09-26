@@ -98,7 +98,6 @@ def analyze_lead(lead) -> dict[str, Any]:
         "model": settings.OPENAI_MODEL,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
-        "cached_input_tokens": cached_tokens,
     })
     return data
 

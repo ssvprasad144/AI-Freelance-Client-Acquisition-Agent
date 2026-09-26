@@ -75,3 +75,12 @@ class Phase710Tests(TestCase):
         self.assertTrue(cancel_if_stopped(sequence))
         self.assertEqual(sequence.status,"completed")
         self.assertEqual(sequence.followups.first().status,"cancelled")
+
+
+    def test_followup_sequence_rejects_malformed_delays(self):
+        response=self.client.post(
+            f"/api/leads/{self.lead.id}/followup-sequence/",
+            {"delays_days":["not-a-number"],"max_steps":3},
+            format="json",
+        )
+        self.assertEqual(response.status_code,400)
