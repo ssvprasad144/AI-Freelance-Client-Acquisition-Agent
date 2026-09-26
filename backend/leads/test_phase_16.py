@@ -2,7 +2,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from .models import Lead, LeadAnalysis, AcquisitionOpportunity
-from .acquisition_orchestrator import opportunity_score, next_action, ensure_opportunity
+from .acquisition_orchestrator import opportunity_score, next_action, ensure_opportunity, VALID_ACTIONS
 
 class Phase16Tests(TestCase):
     def setUp(self):
@@ -14,6 +14,10 @@ class Phase16Tests(TestCase):
         LeadAnalysis.objects.create(lead=self.lead,relevant=True,match_score=85,confidence=90)
         self.lead.status="qualified"; self.lead.save(update_fields=["status","updated_at"])
         self.assertEqual(next_action(self.lead)["action"],"generate_proposal")
+    def test_plan_outreach_action_is_executable(self):
+        self.assertIn("plan_outreach", VALID_ACTIONS)
+        self.assertEqual(VALID_ACTIONS["plan_outreach"]["from"], ["proposal"])
+
     def test_queue_api(self):
         obj=ensure_opportunity(self.lead)
         response=self.api.get("/api/acquisition/queue/")
