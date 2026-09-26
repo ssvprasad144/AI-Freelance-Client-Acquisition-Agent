@@ -5,7 +5,7 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
-from .models import ActivityLog,FollowUp,Lead,LeadAnalysis,Outreach,Reply
+from .models import ActivityLog,DiscoveryQueryCache,FollowUp,Lead,LeadAnalysis,Outreach,Reply
 from .analytics import acquisition_metrics
 
 class APITestBase(TestCase):
@@ -122,6 +122,32 @@ class PublicCrawlerSafetyTests(TestCase):
             result=discover_live("Django freelance")
         self.assertEqual(len(result["leads"]),1)
         enrich.assert_called_once()
+
+
+class DiscoveryOptimizationTests(APITestBase):
+    @patch("leads.discovery_cycle.DiscoveryService.discover")
+    def test_recent_query_is_served_from_cache(self,discover):
+        discover.return_value={"source":"web_search","model":"gpt-4o-mini","leads":[]}
+        call_command("run_discovery_cycle","--query","AI automation freelance")
+        call_command("run_discovery_cycle","--query","AI automation freelance")
+        self.assertEqual(discover.call_count,1)
+        self.assertEqual(DiscoveryQueryCache.objects.count(),1)
+        self.assertTrue(ActivityLog.objects.filter(event_type="discovery.cache_hit").exists())
+
+    @patch("leads.discovery_cycle.DiscoveryService.discover")
+    def test_worker_rotates_across_profiles(self,discover):
+        discover.return_value={"source":"web_search","model":"gpt-4o-mini","leads":[]}
+        call_command("run_discovery_cycle")
+        call_command("run_discovery_cycle")
+        self.assertEqual(discover.call_count,2)
+        self.assertEqual(DiscoveryQueryCache.objects.count(),2)
+
+    def test_proposal_requires_qualified_analysis(self):
+        self.lead.status="new"; self.lead.save(update_fields=["status"])
+        LeadAnalysis.objects.create(lead=self.lead,relevant=True,match_score=40,model="gpt-4o-mini")
+        response=self.client.post(f"/api/leads/{self.lead.id}/proposal/",format="json")
+        self.assertEqual(response.status_code,400)
+        self.assertEqual(Outreach.objects.count(),0)
 
 
 class LeadOptimizationTests(TestCase):
