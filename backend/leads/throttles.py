@@ -5,3 +5,6 @@ class AIThrottle(ScopedRateThrottle):
 
 class DiscoveryThrottle(ScopedRateThrottle):
     scope="discovery"
+
+class LoginThrottle(ScopedRateThrottle):
+    scope="login"
