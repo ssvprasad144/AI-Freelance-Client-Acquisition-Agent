@@ -7,6 +7,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from .models import ActivityLog,DiscoveryDomainStat,DiscoveryQueryCache,DiscoverySearchStat,FollowUp,Lead,LeadAnalysis,Outreach,Reply
 from .analytics import acquisition_metrics
+from .discovery.profiles import query_signature
 
 class APITestBase(TestCase):
     def setUp(self):
