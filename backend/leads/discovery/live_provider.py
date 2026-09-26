@@ -40,25 +40,25 @@ def _extract_json(text: str) -> dict[str, Any]:
         raise
 
 
-def discover_live(query: str) -> dict[str, Any]:
+def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[str, Any]:
     if not settings.OPENAI_API_KEY:
         raise LiveDiscoveryError("OPENAI_API_KEY is required for live discovery.")
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
     prompt = {
         "profile": settings.FREELANCE_SEARCH_PROFILE,
-        "query": query,
+        "query": query + (" " + domain_exclusions if domain_exclusions else ""),
         "search_rules": {
             "current_only": True,
             "public_sources_only": True,
             "exclude_login_only_sources": True,
-            "max_results": settings.DISCOVERY_MAX_RESULTS,
+            "max_results": settings.DISCOVERY_MAX_RESULTS,\n            "domain_exclusions": domain_exclusions,
         },
     }
     response = client.responses.create(
         model=settings.DISCOVERY_MODEL,
         tools=[{
             "type": "web_search",
-            "search_context_size": settings.DISCOVERY_SEARCH_CONTEXT_SIZE,
+            "search_context_size": context_size or settings.DISCOVERY_SEARCH_CONTEXT_SIZE,
             "external_web_access": True,
         }],
         tool_choice="required",
