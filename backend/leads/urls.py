@@ -2,14 +2,5 @@ from django.urls import include,path
 from rest_framework.authtoken.views import obtain_auth_token
 from rest_framework.routers import DefaultRouter
 from .views import LeadViewSet,activity,approve_followup,create_followup,create_reply,dashboard,due_followups,followups,health,login,me,process_due_followups,qualified_leads,qualify_new_leads,replies,run_discovery,analytics,send_outreach,discovery_profiles
-
 router=DefaultRouter(); router.register("leads",LeadViewSet,basename="lead")
-urlpatterns=[
-    path("health/",health), path("auth/login/",login), path("auth/token/",obtain_auth_token), path("auth/me/",me),
-    path("dashboard/",dashboard), path("analytics/",analytics), path("activity/",activity),
-    path("discovery/profiles/",discovery_profiles), path("discovery/run/",run_discovery), path("discovery/qualify/",qualify_new_leads),
-    path("leads/qualified/",qualified_leads), path("followups/",followups), path("followups/process-due/",process_due_followups),
-    path("followups/due/",due_followups), path("followups/create/",create_followup), path("followups/<int:pk>/approve/",approve_followup),
-    path("leads/<int:pk>/followups/",create_followup), path("leads/<int:pk>/replies/",create_reply), path("replies/",replies),
-    path("outreach/<int:pk>/send/",send_outreach), path("",include(router.urls)),
-]
+urlpatterns=[path("health/",health),path("auth/login/",login),path("auth/token/",obtain_auth_token),path("auth/me/",me),path("dashboard/",dashboard),path("analytics/",analytics),path("activity/",activity),path("discovery/profiles/",discovery_profiles),path("discovery/run/",run_discovery),path("discovery/qualify/",qualify_new_leads),path("leads/qualified/",qualified_leads),path("followups/",followups),path("followups/process-due/",process_due_followups),path("followups/due/",due_followups),path("followups/create/",create_followup),path("followups/<int:pk>/approve/",approve_followup),path("leads/<int:pk>/followups/",create_followup),path("leads/<int:pk>/replies/",create_reply),path("replies/",replies),path("outreach/<int:pk>/send/",send_outreach),path("",include(router.urls))]
