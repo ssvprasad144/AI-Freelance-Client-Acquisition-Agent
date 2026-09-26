@@ -20,8 +20,10 @@ from .discovery_cycle import run_discovery_cycle
 from .lead_optimizer import local_lead_score, should_ai_qualify, ai_skip_analysis
 from .followup_service import process_due_followups as process_due_followups_service
 from .acquisition import classify_reply, send_email, send_followup as send_followup_email
+from .outreach_adapters import resolve_outreach_destination
+from .proposal_service import create_proposal, current_version, revise_proposal, restore_version
 from .analytics import acquisition_metrics
-from .models import ActivityLog, FollowUp, Lead, LeadAnalysis, Outreach, Reply
+from .models import ActivityLog, FollowUp, FollowUpSequence, Lead, LeadAnalysis, Outreach, Proposal, Reply
 from .pagination import StandardPagination
 from .serializers import ActivityLogSerializer, FollowUpSerializer, LeadSerializer, ReplySerializer, OutreachSerializer
 
@@ -61,22 +63,8 @@ def me(request): return Response({"id":request.user.id,"username":request.user.u
 
 
 def _proposal_delivery(lead):
-    source = (lead.source or "").lower().replace(" ", "_")
-    action_url = lead.action_url or lead.source_url
-    email = (lead.contact_info or {}).get("email")
-    if any(key in source for key in ("freelancer", "upwork", "fiverr", "peopleperhour", "marketplace")):
-        return {"medium":"marketplace_bid","action_type":"open_bid","action_url":action_url}
-    if "linkedin" in source:
-        return {"medium":"linkedin_dm","action_type":"open_profile","action_url":action_url}
-    if "reddit" in source:
-        return {"medium":"reddit_reply","action_type":"open_post","action_url":action_url}
-    if "github" in source:
-        return {"medium":"github_response","action_type":"open_issue","action_url":action_url}
-    if email:
-        return {"medium":"email","action_type":"send_email","action_url":action_url}
-    if any(key in source for key in ("job", "startup", "career", "wellfound", "indeed")):
-        return {"medium":"job_application","action_type":"open_application","action_url":action_url}
-    return {"medium":"contact_form","action_type":"open_contact_form","action_url":action_url}
+    destination = resolve_outreach_destination(lead)
+    return {"medium": destination.medium, "action_type": destination.action_type, "action_url": destination.url}
 
 def _store(items):
     created=duplicates=invalid=0
@@ -163,7 +151,7 @@ def create_reply(request,pk):
     reply=Reply.objects.create(lead=lead,channel=str(request.data.get("channel") or "email"),message=message,intent="needs_review")
     try:
         classification=classify_reply(reply)
-        reply.sentiment=classification.get("sentiment",""); reply.intent=classification.get("intent",""); reply.save(update_fields=["sentiment","intent"])
+        reply.sentiment=classification.get("sentiment",""); reply.intent=classification.get("intent",""); reply.urgency=classification.get("urgency",""); reply.confidence=int(classification.get("confidence",0) or 0); reply.extracted_questions=classification.get("extracted_questions",[]) or []; reply.recommended_action=classification.get("recommended_action",""); reply.suggested_response=classification.get("suggested_response",""); reply.next_action=classification.get("next_action",""); reply.save(update_fields=["sentiment","intent","urgency","confidence","extracted_questions","recommended_action","suggested_response","next_action"])
     except Exception as exc:
         classification={"recommended_action":"Review reply manually.","error":str(exc)}
     lead.status="replied"; lead.save(update_fields=["status","updated_at"])
@@ -184,16 +172,23 @@ class LeadViewSet(viewsets.ModelViewSet):
         if not analysis:return Response({"detail":"Analyze the lead first."},status=400)
         if not (analysis.relevant and analysis.match_score>=settings.QUALIFICATION_MIN_SCORE):
             return Response({"detail":f"Only qualified leads can generate proposals. Required score: {settings.QUALIFICATION_MIN_SCORE}."},status=400)
-        message=generate_proposal(lead,analysis); delivery=_proposal_delivery(lead); outreach=Outreach.objects.create(lead=lead,channel=delivery["medium"],medium=delivery["medium"],action_type=delivery["action_type"],destination_url=delivery["action_url"] or "",message=message,status="draft"); lead.status="proposal"; lead.save(update_fields=["status","updated_at"])
-        ActivityLog.objects.create(lead=lead,event_type="proposal.generated",message="Proposal draft generated. No message was sent.",metadata={"outreach_id":outreach.id})
-        return Response({"outreach_id":outreach.id,"status":"draft","message":message,"medium":outreach.medium,"action_type":outreach.action_type,"destination_url":outreach.destination_url,"lead_source_url":lead.source_url,"can_send":outreach.medium=="email"})
+        delivery=_proposal_delivery(lead)
+        proposal,version=create_proposal(lead,analysis,delivery["medium"])
+        outreach=Outreach.objects.create(lead=lead,proposal=proposal,channel=delivery["medium"],medium=delivery["medium"],action_type=delivery["action_type"],destination_url=delivery["action_url"] or "",message=version.content,status="draft")
+        lead.status="proposal"; lead.save(update_fields=["status","updated_at"])
+        ActivityLog.objects.create(lead=lead,event_type="proposal.generated",message="Versioned proposal draft generated. No message was sent.",metadata={"outreach_id":outreach.id,"proposal_id":proposal.id,"version":version.version_number})
+        return Response({"outreach_id":outreach.id,"proposal_id":proposal.id,"version":version.version_number,"status":"draft","message":version.content,"medium":outreach.medium,"action_type":outreach.action_type,"destination_url":outreach.destination_url,"lead_source_url":lead.source_url,"can_send":outreach.medium=="email"})
     @action(detail=True,methods=["post"])
     def approve_proposal(self,request,pk=None):
         lead=self.get_object(); outreach=lead.outreach.filter(status="draft").order_by("-created_at").first()
         if not outreach:return Response({"detail":"Generate a proposal draft first."},status=400)
-        outreach.status="approved"; outreach.approved_at=timezone.now(); outreach.save(update_fields=["status","approved_at"])
-        ActivityLog.objects.create(lead=lead,event_type="proposal.approved",message="Proposal approved by user. No message was sent.",metadata={"outreach_id":outreach.id})
-        return Response({"outreach_id":outreach.id,"status":"approved","sent":False,"message":outreach.message,"medium":outreach.medium,"action_type":outreach.action_type,"destination_url":outreach.destination_url,"can_send":outreach.medium=="email"})
+        if outreach.proposal_id:
+            proposal=outreach.proposal; proposal.status="approved"; proposal.approved_at=timezone.now(); proposal.save(update_fields=["status","approved_at","updated_at"])
+            version=current_version(proposal)
+            if version: outreach.message=version.content
+        outreach.status="approved"; outreach.approved_at=timezone.now(); outreach.save(update_fields=["status","approved_at","message"])
+        ActivityLog.objects.create(lead=lead,event_type="proposal.approved",message="Proposal approved by user. No message was sent.",metadata={"outreach_id":outreach.id,"proposal_id":outreach.proposal_id})
+        return Response({"outreach_id":outreach.id,"proposal_id":outreach.proposal_id,"status":"approved","sent":False,"message":outreach.message,"medium":outreach.medium,"action_type":outreach.action_type,"destination_url":outreach.destination_url,"can_send":outreach.medium=="email"})
     @action(detail=True,methods=["post"])
     def set_status(self,request,pk=None):
         lead=self.get_object(); new_status=str(request.data.get("status") or "").strip()
