@@ -1,5 +1,6 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
+from unittest.mock import patch
 from rest_framework.test import APIClient
 from .models import Lead, OutreachPlan
 from .outreach_intelligence import create_plan, eligible, mark_approved, record_attempt_for_outreach
@@ -46,6 +47,25 @@ class Phase17Tests(TestCase):
         self.assertIsNotNone(plan.last_attempt_at)
         self.assertEqual(plan.status,"sent")
         self.assertIsNotNone(plan.sent_at)
+
+
+    def test_health_endpoint_reports_database(self):
+        response=self.api.get("/api/health/")
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.data["status"],"healthy")
+        self.assertEqual(response.data["database"],"ok")
+
+    @patch("leads.views.send_email")
+    def test_email_send_is_idempotent(self, mock_send):
+        mock_send.return_value={"sent":True}
+        plan=create_plan(self.lead,"email","A")
+        mark_approved(plan)
+        outreach=self.lead.outreach.get(medium="email")
+        first=self.api.post(f"/api/outreach/{outreach.id}/send/")
+        second=self.api.post(f"/api/outreach/{outreach.id}/send/")
+        self.assertEqual(first.status_code,200)
+        self.assertEqual(second.status_code,409)
+        self.assertEqual(mock_send.call_count,1)
 
     def test_manual_channel_never_marked_automatic(self):
         plan=create_plan(self.lead,"linkedin","B")
