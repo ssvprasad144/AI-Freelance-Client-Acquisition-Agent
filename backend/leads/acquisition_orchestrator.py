@@ -1,7 +1,11 @@
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
-from .models import AcquisitionOpportunity, Lead, ActivityLog
+from .models import AcquisitionOpportunity, Lead, ActivityLog, Outreach
+from .proposal_service import create_proposal
+from .meeting_service import sync_meeting_context
+from .outreach_intelligence import create_plan
+from .models import Meeting
 
 STAGE_ACTIONS={
     "new": ("qualify","qualification"),
@@ -31,6 +35,9 @@ def next_action(lead):
             return {"action":"await_meeting","reason":"meeting already in progress"}
         return {"action":"book_meeting","reason":"reply received"}
     action,category=STAGE_ACTIONS.get(lead.status,("review","manual_review"))
+    if lead.status=="proposal" and lead.proposals.filter(status="approved").exists():
+        if lead.outreach_plans.filter(status__in=["draft","approved"]).exists(): action="review"; category="manual_review"
+        else: action="plan_outreach"; category="outreach"
     if lead.status=="new" and getattr(lead,"analysis",None): action="qualify"
     return {"action":action,"category":category}
 
@@ -60,27 +67,54 @@ def execute_action(opportunity,action,mode="approval_required",approved=False):
     lead=opportunity.lead
     rule=VALID_ACTIONS.get(action)
     if not rule or lead.status not in rule["from"]:
-        raise ValueError("Invalid action for the lead's current stage.")
+        raise ValueError("Invalid or stale action for the lead's current stage.")
+    if opportunity.recommended_action != action and action != "review":
+        raise ValueError("This action is no longer the current recommended action.")
+    if lead.status in TERMINAL:
+        raise ValueError("Terminal leads cannot receive acquisition actions.")
+    if mode not in {"manual","approval_required","automatic"}:
+        raise ValueError("Invalid automation mode.")
+    configured=getattr(settings,"ACQUISITION_AUTOMATION_MODE","approval_required")
+    if mode=="automatic" and configured!="automatic":
+        raise ValueError("Automatic execution is disabled by the configured automation mode.")
     if mode=="approval_required" and not approved:
-        opportunity.status="pending_approval"; opportunity.save(update_fields=["status","updated_at"])
+        opportunity.status="pending_approval"; opportunity.last_action=action; opportunity.save(update_fields=["status","last_action","updated_at"])
         return {"executed":False,"requires_approval":True,"action":action}
     if action=="qualify":
         if not lead.analysis_id: raise ValueError("Analyze the lead before qualification.")
         lead.status="qualified"; lead.save(update_fields=["status","updated_at"])
     elif action=="generate_proposal":
-        opportunity.status="pending_approval"; opportunity.save(update_fields=["status","updated_at"])
-        return {"executed":False,"requires_approval":True,"action":action,"handoff":"proposal_generation"}
+        if not lead.analysis_id: raise ValueError("Analyze the lead before proposal generation.")
+        if not lead.analysis.relevant or lead.analysis.match_score < settings.QUALIFICATION_MIN_SCORE:
+            raise ValueError("Lead does not meet the qualification threshold.")
+        delivery_medium="email" if (lead.contact_info or {}).get("email") else "manual"
+        proposal,version=create_proposal(lead,lead.analysis,delivery_medium)
+        Outreach.objects.create(lead=lead,proposal=proposal,channel=delivery_medium,medium=delivery_medium,action_type="send_email" if delivery_medium=="email" else "manual_submit",destination_url=lead.action_url or lead.source_url,message=version.content,status="draft")
+        lead.status="proposal"; lead.save(update_fields=["status","updated_at"])
     elif action=="approve_proposal":
-        if not lead.outreach.filter(status="draft").exists(): raise ValueError("Generate a proposal before approval.")
+        outreach=lead.outreach.filter(status="draft").order_by("-created_at").first()
+        if not outreach: raise ValueError("Generate a proposal before approval.")
+        if outreach.proposal_id:
+            proposal=outreach.proposal; proposal.status="approved"; proposal.approved_at=timezone.now(); proposal.save(update_fields=["status","approved_at","updated_at"])
+        outreach.status="approved"; outreach.approved_at=timezone.now(); outreach.save(update_fields=["status","approved_at"])
+    elif action=="plan_outreach":
+        create_plan(lead)
     elif action=="book_meeting":
-        opportunity.status="pending_approval"; opportunity.save(update_fields=["status","updated_at"])
-        return {"executed":False,"requires_approval":True,"action":action,"handoff":"meeting_booking"}
-    opportunity.status="ready"; opportunity.stage=lead.status; opportunity.recommended_action=next_action(lead)["action"]; opportunity.executed_at=timezone.now(); opportunity.save(update_fields=["status","stage","recommended_action","executed_at","updated_at"])
+        meeting=Meeting.objects.create(lead=lead,client=lead.client,status="requested",notes="Created by approved acquisition orchestration.")
+        sync_meeting_context(meeting)
+    elif action in {"await_reply","await_meeting"}:
+        pass
+    elif action=="review":
+        opportunity.status="pending_approval"; opportunity.last_action=action; opportunity.save(update_fields=["status","last_action","updated_at"])
+        return {"executed":False,"requires_approval":True,"action":action}
+    opportunity.execution_count += 1
+    opportunity.last_action=action
+    opportunity.last_error=""
+    opportunity.status="ready"
+    opportunity.stage=lead.status
+    opportunity.recommended_action=next_action(lead)["action"]
+    opportunity.executed_at=timezone.now()
+    opportunity.save(update_fields=["execution_count","last_action","last_error","status","stage","recommended_action","executed_at","updated_at"])
     ActivityLog.objects.create(lead=lead,event_type="acquisition.action_executed",message=f"Acquisition action executed: {action}.",metadata={"opportunity_id":opportunity.id,"action":action,"mode":mode})
     return {"executed":True,"requires_approval":False,"action":action,"lead_status":lead.status,"opportunity_id":opportunity.id}
 
-def recalculate_opportunities():
-    count=0
-    for lead in Lead.objects.exclude(status__in=TERMINAL):
-        ensure_opportunity(lead); count+=1
-    return {"updated":count}
