@@ -154,7 +154,7 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
     analyzed=qualified=locally_filtered=0; ai_input_tokens=ai_output_tokens=0
     for lead in candidates:
         local=local_lead_score(lead)
-        if not should_ai_qualify(lead): data=ai_skip_analysis(lead,local); locally_filtered+=1
+        if not should_ai_qualify(lead): data=analyze_lead(lead); ai_input_tokens+=int(data.get("input_tokens",0) or 0); ai_output_tokens+=int(data.get("output_tokens",0) or 0)
         else:
             data=analyze_lead(lead); ai_input_tokens+=int(data.get("input_tokens",0) or 0); ai_output_tokens+=int(data.get("output_tokens",0) or 0)
         analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data); analyzed+=1
