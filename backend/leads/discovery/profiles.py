@@ -148,3 +148,18 @@ def select_profile(ttl_hours,only_if_due=True,strategy_id=None):
     _,_,p,q,variant=min(candidates,key=lambda x:(x[0],x[1]))
     return {**p,"strategy_id":strategy["id"],"query":q,"query_variant":variant,"query_family":query_family(p["id"],strategy["id"]),"selection_mode":"adaptive" if explicit else "contextual-bandit","context_size":select_context_size(p["id"],strategy["id"]),"domain_exclusions":domain_exclusions()}
 
+
+
+def public_profiles():
+    """Return discovery profiles and their current adaptive performance."""
+    return [
+        {**profile, "strategy_ids": [strategy["id"] for strategy in STRATEGIES]}
+        for profile in DISCOVERY_PROFILES
+    ]
+
+def strategy_performance(lookback_days=None):
+    """Return compact strategy learning data for the discovery UI/API."""
+    return [
+        {**strategy, "performance": _score(strategy["id"], lookback_days)}
+        for strategy in STRATEGIES
+    ]
