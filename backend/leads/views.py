@@ -30,17 +30,6 @@ from .acquisition_orchestrator import build_queue, ensure_opportunity, execute_a
 from .outreach_intelligence import build_outreach_plans, create_plan, channel_metrics, mark_approved
 
 
-@api_view(["GET"])
-@permission_classes([AllowAny])
-def health(request):
-    from django.db import connection
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT 1")
-            cursor.fetchone()
-        return Response({"status":"healthy","database":"ok"})
-    except Exception:
-        return Response({"status":"unhealthy","database":"error"},status=503)
 from .revenue_intelligence import upsert_revenue, revenue_metrics, optimization_report
 from .analytics import acquisition_metrics
 from .models import ActivityLog, FollowUp, FollowUpSequence, Lead, LeadAnalysis, Outreach, Proposal, Reply, Client, Contact, Conversation, Meeting, AcquisitionEvent, LearningStat, AcquisitionOpportunity, OutreachPlan, RevenueRecord
@@ -60,13 +49,21 @@ def _paginate(request,qs,serializer):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health(request):
+    from django.db import connection
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+        database="ok"
+    except Exception:
+        return JsonResponse({"status":"unhealthy","database":"error","service":"ai-freelance-client-acquisition-agent"},status=503)
     now=timezone.now()
     discovery=ActivityLog.objects.filter(event_type="worker.discovery.heartbeat").order_by("-created_at").first()
     followup=ActivityLog.objects.filter(event_type="worker.followup.heartbeat").order_by("-created_at").first()
     def state(item,interval):
         if not item:return {"status":"unknown","last_seen":None}
         return {"status":"healthy" if (now-item.created_at).total_seconds()<=max(interval*2,120) else "stale","last_seen":item.created_at}
-    return JsonResponse({"status":"ok","service":"ai-freelance-client-acquisition-agent","discovery":"web_search","workers":{"discovery":state(discovery,settings.DISCOVERY_WORKER_INTERVAL),"followups":state(followup,settings.FOLLOWUP_WORKER_INTERVAL)}})
+    return JsonResponse({"status":"healthy","database":database,"service":"ai-freelance-client-acquisition-agent","discovery":"web_search","workers":{"discovery":state(discovery,settings.DISCOVERY_WORKER_INTERVAL),"followups":state(followup,settings.FOLLOWUP_WORKER_INTERVAL)}})
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
