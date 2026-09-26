@@ -23,7 +23,7 @@ from .acquisition import classify_reply, send_email, send_followup as send_follo
 from .analytics import acquisition_metrics
 from .models import ActivityLog, FollowUp, Lead, LeadAnalysis, Outreach, Reply
 from .pagination import StandardPagination
-from .serializers import ActivityLogSerializer, FollowUpSerializer, LeadSerializer, ReplySerializer
+from .serializers import ActivityLogSerializer, FollowUpSerializer, LeadSerializer, ReplySerializer, OutreachSerializer
 
 def _normalize_title(value): return re.sub(r"\s+"," ",re.sub(r"[^a-z0-9 ]"," ",str(value).lower())).strip()
 def _normalize_url(value):
@@ -58,6 +58,26 @@ def login(request):
 @api_view(["GET"])
 def me(request): return Response({"id":request.user.id,"username":request.user.username,"is_staff":request.user.is_staff})
 
+
+
+def _proposal_delivery(lead):
+    source = (lead.source or "").lower().replace(" ", "_")
+    action_url = lead.action_url or lead.source_url
+    email = (lead.contact_info or {}).get("email")
+    if any(key in source for key in ("freelancer", "upwork", "fiverr", "peopleperhour", "marketplace")):
+        return {"medium":"marketplace_bid","action_type":"open_bid","action_url":action_url}
+    if "linkedin" in source:
+        return {"medium":"linkedin_dm","action_type":"open_profile","action_url":action_url}
+    if "reddit" in source:
+        return {"medium":"reddit_reply","action_type":"open_post","action_url":action_url}
+    if "github" in source:
+        return {"medium":"github_response","action_type":"open_issue","action_url":action_url}
+    if email:
+        return {"medium":"email","action_type":"send_email","action_url":action_url}
+    if any(key in source for key in ("job", "startup", "career", "wellfound", "indeed")):
+        return {"medium":"job_application","action_type":"open_application","action_url":action_url}
+    return {"medium":"contact_form","action_type":"open_contact_form","action_url":action_url}
+
 def _store(items):
     created=duplicates=invalid=0
     with transaction.atomic():
@@ -65,7 +85,7 @@ def _store(items):
             if not item.get("title") or not item.get("description") or not item.get("source_url"): invalid+=1; continue
             url=item["source_url"]; nt=_normalize_title(item.get("title","")); nu=_normalize_url(url); company=item.get("company","")
             if Lead.objects.filter(normalized_url=nu).exists() or Lead.objects.filter(normalized_title=nt,company__iexact=company).exists(): duplicates+=1; continue
-            Lead.objects.create(title=item["title"],normalized_title=nt,normalized_url=nu,company=company,description=item["description"],source=item.get("source") or "web_search",source_url=url,lead_type=item.get("lead_type","freelance"),budget_text=item.get("budget_text",""),technologies=item.get("technologies") or [],contact_info=item.get("contact_info") or {},discovered_at=timezone.now(),posted_at=item.get("posted_at") or None,expires_at=item.get("expires_at") or None,last_verified_at=timezone.now()); created+=1
+            Lead.objects.create(title=item["title"],normalized_title=nt,normalized_url=nu,company=company,description=item["description"],source=item.get("source") or "web_search",source_url=url,action_url=item.get("action_url") or url,lead_type=item.get("lead_type","freelance"),budget_text=item.get("budget_text",""),technologies=item.get("technologies") or [],contact_info=item.get("contact_info") or {},discovered_at=timezone.now(),posted_at=item.get("posted_at") or None,expires_at=item.get("expires_at") or None,last_verified_at=timezone.now()); created+=1
     return created,duplicates,invalid
 
 @api_view(["POST"])
@@ -164,16 +184,16 @@ class LeadViewSet(viewsets.ModelViewSet):
         if not analysis:return Response({"detail":"Analyze the lead first."},status=400)
         if not (analysis.relevant and analysis.match_score>=settings.QUALIFICATION_MIN_SCORE):
             return Response({"detail":f"Only qualified leads can generate proposals. Required score: {settings.QUALIFICATION_MIN_SCORE}."},status=400)
-        message=generate_proposal(lead,analysis); outreach=Outreach.objects.create(lead=lead,channel="email",message=message,status="draft"); lead.status="proposal"; lead.save(update_fields=["status","updated_at"])
+        message=generate_proposal(lead,analysis); delivery=_proposal_delivery(lead); outreach=Outreach.objects.create(lead=lead,channel=delivery["medium"],medium=delivery["medium"],action_type=delivery["action_type"],destination_url=delivery["action_url"] or "",message=message,status="draft"); lead.status="proposal"; lead.save(update_fields=["status","updated_at"])
         ActivityLog.objects.create(lead=lead,event_type="proposal.generated",message="Proposal draft generated. No message was sent.",metadata={"outreach_id":outreach.id})
-        return Response({"outreach_id":outreach.id,"status":"draft","message":message})
+        return Response({"outreach_id":outreach.id,"status":"draft","message":message,"medium":outreach.medium,"action_type":outreach.action_type,"destination_url":outreach.destination_url,"lead_source_url":lead.source_url,"can_send":outreach.medium=="email"})
     @action(detail=True,methods=["post"])
     def approve_proposal(self,request,pk=None):
         lead=self.get_object(); outreach=lead.outreach.filter(status="draft").order_by("-created_at").first()
         if not outreach:return Response({"detail":"Generate a proposal draft first."},status=400)
         outreach.status="approved"; outreach.approved_at=timezone.now(); outreach.save(update_fields=["status","approved_at"])
         ActivityLog.objects.create(lead=lead,event_type="proposal.approved",message="Proposal approved by user. No message was sent.",metadata={"outreach_id":outreach.id})
-        return Response({"outreach_id":outreach.id,"status":"approved","sent":False,"message":outreach.message})
+        return Response({"outreach_id":outreach.id,"status":"approved","sent":False,"message":outreach.message,"medium":outreach.medium,"action_type":outreach.action_type,"destination_url":outreach.destination_url,"can_send":outreach.medium=="email"})
     @action(detail=True,methods=["post"])
     def set_status(self,request,pk=None):
         lead=self.get_object(); new_status=str(request.data.get("status") or "").strip()
