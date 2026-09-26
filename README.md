@@ -179,3 +179,16 @@ The discovery engine now applies ten cost controls before and around paid web se
 10. dynamic daily search budgeting: the four-search ceiling is a ceiling, not a target
 
 These controls are local Django/PostgreSQL logic. They do not add an AI training job or an extra model call merely to choose a search. A paid web search is made only after the local gates allow it. The existing 72-hour query cache, 30-day learning window, 4-search daily ceiling, local prefilter and crawler/qualification limits remain in place.
+
+
+### Source-aware proposal and outreach center
+
+Each discovered lead stores both its original `source_url` and an actionable `action_url` when discovery can verify a distinct public destination. Proposal generation maps the lead to a delivery medium and action: marketplace bid, LinkedIn DM, Reddit reply, GitHub response, email, job application, or contact form.
+
+The Outreach Center presents each ready proposal with the exact destination, a copy-proposal action, and the correct completion workflow. Manual channels are tracked as opened/submitted without pretending the platform submission happened automatically. Email remains separately gated by `OUTREACH_ENABLED` and SMTP configuration.
+
+Outreach endpoints include:
+- GET /api/outreach/ready/
+- POST /api/outreach/<id>/open/
+- POST /api/outreach/<id>/mark-submitted/
+- POST /api/outreach/<id>/send/ (email only, approved + provider gated)

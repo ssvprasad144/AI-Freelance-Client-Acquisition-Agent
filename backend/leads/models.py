@@ -4,7 +4,7 @@ class Lead(models.Model):
     STATUS=[("new","New"),("qualified","Qualified"),("proposal","Proposal"),("contacted","Contacted"),("replied","Replied"),("won","Won"),("lost","Lost"),("archived","Archived")]
     TYPE=[("freelance","Freelance"),("direct","Direct"),("startup","Startup"),("other","Other")]
     title=models.CharField(max_length=255); normalized_title=models.CharField(max_length=255,blank=True,db_index=True); normalized_url=models.CharField(max_length=500,blank=True,db_index=True)
-    company=models.CharField(max_length=255,blank=True); description=models.TextField(); source=models.CharField(max_length=100,default="mock"); source_url=models.URLField(blank=True)
+    company=models.CharField(max_length=255,blank=True); description=models.TextField(); source=models.CharField(max_length=100,default="mock"); source_url=models.URLField(blank=True); action_url=models.URLField(blank=True)
     lead_type=models.CharField(max_length=30,choices=TYPE,default="freelance"); budget_text=models.CharField(max_length=255,blank=True)
     technologies=models.JSONField(default=list,blank=True); contact_info=models.JSONField(default=dict,blank=True); status=models.CharField(max_length=30,choices=STATUS,default="new")
     discovered_at=models.DateTimeField(null=True,blank=True); posted_at=models.DateTimeField(null=True,blank=True); expires_at=models.DateTimeField(null=True,blank=True); last_verified_at=models.DateTimeField(null=True,blank=True)
@@ -19,8 +19,8 @@ class LeadAnalysis(models.Model):
     model=models.CharField(max_length=100,default="mock"); input_tokens=models.PositiveIntegerField(default=0); output_tokens=models.PositiveIntegerField(default=0); created_at=models.DateTimeField(auto_now=True)
 
 class Outreach(models.Model):
-    lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="outreach"); channel=models.CharField(max_length=30,default="email"); message=models.TextField()
-    status=models.CharField(max_length=20,default="draft"); approved_at=models.DateTimeField(null=True,blank=True); sent_at=models.DateTimeField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True)
+    lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="outreach"); channel=models.CharField(max_length=30,default="email"); medium=models.CharField(max_length=40,default="email",db_index=True); action_type=models.CharField(max_length=50,default="send_email"); message=models.TextField()
+    destination_url=models.URLField(blank=True); status=models.CharField(max_length=20,default="draft"); approved_at=models.DateTimeField(null=True,blank=True); opened_at=models.DateTimeField(null=True,blank=True); submitted_at=models.DateTimeField(null=True,blank=True); sent_at=models.DateTimeField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True)
 
 class FollowUp(models.Model):
     STATUS=[("draft","Draft"),("approved","Approved"),("due","Due"),("sent","Sent"),("cancelled","Cancelled")]
