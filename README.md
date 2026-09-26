@@ -19,3 +19,30 @@ Use `source":"mock"` for regression tests.
 Live Web Search → Lead Extraction → Deduplication → PostgreSQL → AI Qualification → Proposal Draft → Human Approval → Outreach/Follow-up.
 
 Keep `OPENAI_API_KEY` server-side.
+
+
+## Follow-up worker
+
+Approved follow-ups are automatically moved to the `due` state when their scheduled time arrives. The worker never sends external messages.
+
+Run one processing cycle:
+
+```bash
+cd backend
+python manage.py process_due_followups
+```
+
+Run continuously:
+
+```bash
+cd backend
+python manage.py process_due_followups --loop
+```
+
+The loop interval defaults to `FOLLOWUP_WORKER_INTERVAL=60` seconds and can be changed through the environment. The processor is idempotent, so repeated cycles do not duplicate the due transition or activity log.
+
+The intended lifecycle is:
+
+`Draft → Approved → Due → Ready for Action`
+
+External outreach remains a separate, human-controlled step. The worker does not send email, platform messages, or other outbound communication.
