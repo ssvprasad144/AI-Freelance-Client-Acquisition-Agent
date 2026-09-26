@@ -6,6 +6,7 @@ from django.utils import timezone
 from openai import OpenAI
 
 from .models import FollowUp, FollowUpSequence, Lead, Reply
+from .outreach_adapters import resolve_outreach_destination
 
 
 FOLLOWUP_PROMPT = """Write a concise freelance follow-up based only on the opportunity and prior interaction.
@@ -38,11 +39,12 @@ def generate_followup_message(lead: Lead, step: int, previous_reply=None, previo
 
 def create_sequence(lead, delays_days=None, max_steps=3):
     delays = list(delays_days or [3, 5, 7])[:max(1, min(int(max_steps), 5))]
-    sequence = FollowUpSequence.objects.create(lead=lead, max_steps=len(delays), delays_days=delays, current_step=1)
+    destination=resolve_outreach_destination(lead)
+    sequence = FollowUpSequence.objects.create(lead=lead, max_steps=len(delays), delays_days=delays, current_step=1, medium=destination.medium, action_type=destination.action_type, destination_url=destination.url or "")
     previous_reply = lead.replies.order_by("-created_at").first()
     message = generate_followup_message(lead, 1, previous_reply)
     scheduled = timezone.now() + timedelta(days=int(delays[0]))
-    followup = FollowUp.objects.create(sequence=sequence, lead=lead, step_number=1, scheduled_at=scheduled, message=message, status="draft")
+    followup = FollowUp.objects.create(sequence=sequence, lead=lead, step_number=1, medium=sequence.medium, action_type=sequence.action_type, destination_url=sequence.destination_url, scheduled_at=scheduled, message=message, status="draft")
     return sequence, followup
 
 
@@ -77,7 +79,7 @@ def schedule_next_step(followup):
     previous_message = followup.message
     message = generate_followup_message(sequence.lead, next_step, previous_reply, previous_message)
     next_followup = FollowUp.objects.create(
-        sequence=sequence, lead=sequence.lead, step_number=next_step,
+        sequence=sequence, lead=sequence.lead, step_number=next_step, medium=sequence.medium, action_type=sequence.action_type, destination_url=sequence.destination_url,
         scheduled_at=timezone.now() + timedelta(days=delay), message=message, status="draft",
     )
     sequence.current_step = next_step
