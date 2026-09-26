@@ -54,12 +54,13 @@ def _store(items):
 
 
 def run_discovery_cycle(query=None, source="live", qualification_limit=None):
+    cycle_started = timezone.now()
     query = (query or settings.DEFAULT_DISCOVERY_QUERY).strip()
     result = DiscoveryService().discover(query, source)
     items = result.get("leads", [])
     created, duplicates, invalid = _store(items)
     limit = qualification_limit or settings.DISCOVERY_MAX_RESULTS
-    candidates = list(Lead.objects.filter(status="new", analysis__isnull=True).order_by("-discovered_at", "-created_at")[:limit])
+    candidates = list(Lead.objects.filter(status="new", analysis__isnull=True, discovered_at__gte=cycle_started).order_by("-discovered_at", "-created_at")[:limit])
     analyzed = qualified = locally_filtered = 0
     ai_input_tokens = ai_output_tokens = 0
     for lead in candidates:
