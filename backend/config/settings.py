@@ -53,7 +53,7 @@ REST_FRAMEWORK={
     "DEFAULT_PAGINATION_CLASS":"leads.pagination.StandardPagination",
     "PAGE_SIZE":50,
     "DEFAULT_THROTTLE_CLASSES":["rest_framework.throttling.AnonRateThrottle","rest_framework.throttling.UserRateThrottle","rest_framework.throttling.ScopedRateThrottle"],
-    "DEFAULT_THROTTLE_RATES":{"anon":"30/min","user":"120/min","discovery":"5/min","ai":"30/min"},
+    "DEFAULT_THROTTLE_RATES":{"anon":"30/min","user":"120/min","discovery":"5/min","ai":"30/min","login":"5/min"},
 }
 
 if not DEBUG:
