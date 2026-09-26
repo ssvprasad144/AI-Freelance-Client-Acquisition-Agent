@@ -26,9 +26,17 @@ services:
       - key: DISCOVERY_WORKER_INTERVAL
         value: "21600"
       - key: DISCOVERY_QUERY_CACHE_TTL_HOURS
-        value: "36"
+        value: "72"
+      - key: DISCOVERY_MAX_SEARCHES_PER_DAY
+        value: "4"
+      - key: DISCOVERY_TARGET_QUALIFIED_LEADS
+        value: "10"
       - key: LOCAL_PREFILTER_MIN_SCORE
-        value: "20"
+        value: "40"
+      - key: CRAWLER_MIN_LEAD_SCORE
+        value: "40"
+      - key: AI_QUALIFICATION_MAX_LEADS_PER_CYCLE
+        value: "8"
       - key: AI_MAX_LEAD_DESCRIPTION_CHARS
         value: "6000"
       - key: AI_MAX_REPLY_CHARS
@@ -70,9 +78,17 @@ services:
       - key: DISCOVERY_WORKER_INTERVAL
         value: "21600"
       - key: DISCOVERY_QUERY_CACHE_TTL_HOURS
-        value: "36"
+        value: "72"
+      - key: DISCOVERY_MAX_SEARCHES_PER_DAY
+        value: "4"
+      - key: DISCOVERY_TARGET_QUALIFIED_LEADS
+        value: "10"
       - key: LOCAL_PREFILTER_MIN_SCORE
-        value: "20"
+        value: "40"
+      - key: CRAWLER_MIN_LEAD_SCORE
+        value: "40"
+      - key: AI_QUALIFICATION_MAX_LEADS_PER_CYCLE
+        value: "8"
       - key: AI_MAX_LEAD_DESCRIPTION_CHARS
         value: "6000"
       - key: AI_MAX_REPLY_CHARS
@@ -114,9 +130,17 @@ services:
       - key: DISCOVERY_WORKER_INTERVAL
         value: "21600"
       - key: DISCOVERY_QUERY_CACHE_TTL_HOURS
-        value: "36"
+        value: "72"
+      - key: DISCOVERY_MAX_SEARCHES_PER_DAY
+        value: "4"
+      - key: DISCOVERY_TARGET_QUALIFIED_LEADS
+        value: "10"
       - key: LOCAL_PREFILTER_MIN_SCORE
-        value: "20"
+        value: "40"
+      - key: CRAWLER_MIN_LEAD_SCORE
+        value: "40"
+      - key: AI_QUALIFICATION_MAX_LEADS_PER_CYCLE
+        value: "8"
       - key: AI_MAX_LEAD_DESCRIPTION_CHARS
         value: "6000"
       - key: AI_MAX_REPLY_CHARS
