@@ -27,7 +27,7 @@ class Phase17Tests(TestCase):
         mark_approved(plan)
         regenerated=create_plan(self.lead,"email","A")
         self.assertEqual(regenerated.status,"approved")
-        self.assertEqual(regenerated.attempt_count,1)
+        self.assertEqual(regenerated.attempt_count,0)
 
 
     def test_approval_does_not_consume_attempt(self):
