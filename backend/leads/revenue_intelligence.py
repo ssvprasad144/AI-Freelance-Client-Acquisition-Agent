@@ -47,7 +47,7 @@ def upsert_revenue(lead,data):
 def revenue_metrics():
     records=list(RevenueRecord.objects.select_related("lead").all()); reporting=settings.REVENUE_DEFAULT_CURRENCY
     total=sum(to_reporting(r.won_value,r.currency) for r in records); expected=sum(to_reporting(r.expected_value,r.currency) for r in records)
-    costs={k:sum(float(getattr(r,k) or 0) for r in records) for k in ["search_cost","ai_cost","crawler_cost","outreach_cost"]}; total_cost=sum(costs.values())
+    cost_fields=["search_cost","ai_cost","crawler_cost","outreach_cost"]\n    costs={k:sum(to_reporting(getattr(r,k),r.currency) for r in records) for k in cost_fields}; total_cost=sum(costs.values())
     def grouped(field):
         buckets={}
         for r in records:
