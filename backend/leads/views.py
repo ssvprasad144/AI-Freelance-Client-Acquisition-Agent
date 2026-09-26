@@ -362,7 +362,14 @@ def create_meeting(request):
         try: client=Client.objects.get(pk=request.data["client_id"])
         except Client.DoesNotExist: return Response({"detail":"Client not found."},status=404)
     if lead and not client: client,_=sync_lead_client(lead)
-    meeting=Meeting.objects.create(lead=lead,client=client,contact_id=request.data.get("contact_id"),status=str(request.data.get("status") or "requested"),scheduled_at=request.data.get("scheduled_at"),meeting_url=str(request.data.get("meeting_url") or ""),notes=str(request.data.get("notes") or ""),outcome=str(request.data.get("outcome") or ""),next_action=str(request.data.get("next_action") or ""))
+    status_value=str(request.data.get("status") or "requested")
+    if status_value not in {x[0] for x in Meeting.STATUS}: return Response({"detail":"Invalid meeting status."},status=400)
+    contact_id=request.data.get("contact_id")
+    if contact_id:
+        try: contact=Contact.objects.get(pk=contact_id)
+        except Contact.DoesNotExist: return Response({"detail":"Contact not found."},status=404)
+        if client and contact.client_id!=client.id: return Response({"detail":"Contact does not belong to this client."},status=400)
+    meeting=Meeting.objects.create(lead=lead,client=client,contact_id=contact_id,status=status_value,scheduled_at=request.data.get("scheduled_at"),meeting_url=str(request.data.get("meeting_url") or ""),notes=str(request.data.get("notes") or ""),outcome=str(request.data.get("outcome") or ""),next_action=str(request.data.get("next_action") or ""))
     sync_meeting_context(meeting); apply_meeting_status(meeting,meeting.status)
     return Response(MeetingSerializer(meeting).data,status=201)
 
@@ -371,6 +378,7 @@ def update_meeting(request,pk):
     try: meeting=Meeting.objects.get(pk=pk)
     except Meeting.DoesNotExist: return Response({"detail":"Meeting not found."},status=404)
     allowed=["status","scheduled_at","meeting_url","notes","outcome","next_action","completed_at"]
+    if "status" in request.data and str(request.data["status"]) not in {x[0] for x in Meeting.STATUS}: return Response({"detail":"Invalid meeting status."},status=400)
     for field in allowed:
         if field in request.data: setattr(meeting,field,request.data[field])
     sync_meeting_context(meeting); apply_meeting_status(meeting,meeting.status)
