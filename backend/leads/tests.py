@@ -16,14 +16,17 @@ class APITestBase(TestCase):
 
 class AuthTests(TestCase):
     def test_protected_endpoint_requires_auth(self): self.assertEqual(APIClient().get("/api/dashboard/").status_code,401)
+    def test_token_endpoint_is_not_exposed(self): self.assertEqual(APIClient().post("/api/auth/token/",{"username":"user","password":"pass12345"},format="json").status_code,404)
     def test_login_returns_token(self):
         get_user_model().objects.create_user(username="user",password="pass12345"); response=APIClient().post("/api/auth/login/",{"username":"user","password":"pass12345"},format="json"); self.assertEqual(response.status_code,200); self.assertTrue(response.data["token"])
+    def test_process_due_followups_http_endpoint_is_not_exposed(self): self.assertEqual(APIClient().post("/api/followups/process-due/",format="json").status_code,404)
 
 class FollowUpLifecycleTests(APITestBase):
     def test_create_and_approve_followup(self):
         scheduled=timezone.now()+timedelta(hours=2); response=self.client.post("/api/followups/create/",{"lead_id":self.lead.id,"scheduled_at":scheduled.isoformat(),"message":"Following up on the opportunity."},format="json"); self.assertEqual(response.status_code,200); followup=FollowUp.objects.get(pk=response.data["id"]); self.assertEqual(followup.status,"draft"); response=self.client.post(f"/api/followups/{followup.id}/approve/",format="json"); self.assertEqual(response.status_code,200); followup.refresh_from_db(); self.assertEqual(followup.status,"approved"); self.assertFalse(response.data["sent"])
     def test_due_processing_is_idempotent_and_never_sends(self):
-        followup=FollowUp.objects.create(lead=self.lead,scheduled_at=timezone.now()-timedelta(minutes=5),message="Time to follow up.",status="approved"); response=self.client.post("/api/followups/process-due/",format="json"); self.assertEqual(response.status_code,200); self.assertEqual(response.data["processed"],1); self.assertFalse(response.data["sent"]); followup.refresh_from_db(); self.assertEqual(followup.status,"due"); self.assertEqual(ActivityLog.objects.filter(event_type="followup.due").count(),1); response=self.client.post("/api/followups/process-due/",format="json"); self.assertEqual(response.data["processed"],0)
+        followup=FollowUp.objects.create(lead=self.lead,scheduled_at=timezone.now()-timedelta(minutes=5),message="Time to follow up.",status="approved"); from .followup_service import process_due_followups
+        result=process_due_followups(); self.assertEqual(result["processed"],1); self.assertFalse(result["sent"]); followup.refresh_from_db(); self.assertEqual(followup.status,"due"); self.assertEqual(ActivityLog.objects.filter(event_type="followup.due").count(),1); result=process_due_followups(); self.assertEqual(result["processed"],0)
     def test_future_approved_followup_is_not_due(self):
         FollowUp.objects.create(lead=self.lead,scheduled_at=timezone.now()+timedelta(hours=1),message="Future follow-up.",status="approved"); self.client.post("/api/followups/process-due/",format="json"); response=self.client.get("/api/followups/due/"); self.assertEqual(response.status_code,200); self.assertEqual(response.data["results"],[])
     def test_management_command_processes_due_followup(self): FollowUp.objects.create(lead=self.lead,scheduled_at=timezone.now()-timedelta(minutes=1),message="Worker follow-up.",status="approved"); call_command("process_due_followups"); self.assertEqual(FollowUp.objects.filter(status="due").count(),1)
