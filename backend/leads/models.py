@@ -56,6 +56,9 @@ class FollowUpSequence(models.Model):
     stop_on_reply=models.BooleanField(default=True)
     stop_on_terminal_status=models.BooleanField(default=True)
     current_step=models.PositiveSmallIntegerField(default=0)
+    medium=models.CharField(max_length=40,default="email")
+    action_type=models.CharField(max_length=50,default="send_email")
+    destination_url=models.URLField(blank=True)
     delays_days=models.JSONField(default=list,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)
     updated_at=models.DateTimeField(auto_now=True)
@@ -64,6 +67,9 @@ class FollowUp(models.Model):
     STATUS=[("draft","Draft"),("approved","Approved"),("due","Due"),("sent","Sent"),("cancelled","Cancelled")]
     lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="followups"); sequence=models.ForeignKey(FollowUpSequence,on_delete=models.SET_NULL,null=True,blank=True,related_name="followups")
     step_number=models.PositiveSmallIntegerField(default=1)
+    medium=models.CharField(max_length=40,default="email")
+    action_type=models.CharField(max_length=50,default="send_email")
+    destination_url=models.URLField(blank=True)
     scheduled_at=models.DateTimeField(); message=models.TextField()
     status=models.CharField(max_length=20,default="draft"); approved_at=models.DateTimeField(null=True,blank=True); sent_at=models.DateTimeField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True)
 
