@@ -29,6 +29,9 @@ def personalized_message(lead,channel,variant="A"):
 def create_plan(lead,channel=None,variant="A"):
     if not eligible(lead): raise ValueError("Outreach is blocked because this lead has replied, has a meeting, or is terminal.")
     channel=channel or choose_channel(lead)
+    existing=OutreachPlan.objects.filter(lead=lead,channel=channel,variant=variant).first()
+    if existing and existing.status in {"approved","sent"}:
+        return existing
     plan,_=OutreachPlan.objects.update_or_create(lead=lead,channel=channel,variant=variant,defaults={
         "message":personalized_message(lead,channel,variant),
         "destination_url":lead.action_url or lead.source_url,
