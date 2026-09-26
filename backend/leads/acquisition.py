@@ -8,10 +8,10 @@ from .knowledge import PROFILE
 from .models import ActivityLog, Lead, Outreach, Reply
 
 REPLY_PROMPT="""Classify a client reply using only the supplied text.
-Return JSON with keys: sentiment, intent, urgency, recommended_action.
+Return JSON with keys: sentiment, intent, urgency, confidence, extracted_questions, recommended_action, suggested_response, next_action.
 sentiment must be one of positive, neutral, negative, mixed.
-intent must be one of interested, pricing, portfolio, call, clarification, not_interested, follow_up_later, other.
-urgency must be one of high, medium, low.
+intent must be one of interested, pricing, portfolio, call, clarification, not_interested, follow_up_later, negotiation, other.
+urgency must be one of high, medium, low. confidence must be 0-100. extracted_questions must be an array. next_action must be one of reply, schedule_call, clarify, negotiate, follow_up, close, review.
 Never invent facts."""
 
 def personalize_proposal(lead, analysis):
@@ -29,12 +29,12 @@ def classify_reply(reply):
     if not settings.OPENAI_API_KEY:
         text=reply.message.lower()
         if any(x in text for x in ["interested","let's talk","lets talk","schedule","call","available"]):
-            return {"sentiment":"positive","intent":"interested","urgency":"medium","recommended_action":"Reply promptly and propose a concrete next step."}
+            return {"sentiment":"positive","intent":"interested","urgency":"medium","confidence":85,"extracted_questions":[],"recommended_action":"Reply promptly and propose a concrete next step.","suggested_response":"Thanks for getting back to me. I would be happy to discuss the scope and next steps.","next_action":"reply"}
         if any(x in text for x in ["price","pricing","cost","budget","quote"]):
-            return {"sentiment":"neutral","intent":"pricing","urgency":"medium","recommended_action":"Clarify scope before giving a firm quote."}
+            return {"sentiment":"neutral","intent":"pricing","urgency":"medium","confidence":80,"extracted_questions":[],"recommended_action":"Clarify scope before giving a firm quote.","suggested_response":"Happy to discuss pricing. I would first confirm the scope, deliverables, and timeline so I can give an accurate estimate.","next_action":"negotiate"}
         if any(x in text for x in ["no thanks","not interested","filled","already hired"]):
-            return {"sentiment":"negative","intent":"not_interested","urgency":"low","recommended_action":"Close the lead politely and do not continue contacting unless invited."}
-        return {"sentiment":"neutral","intent":"other","urgency":"low","recommended_action":"Review the reply and determine whether clarification is needed."}
+            return {"sentiment":"negative","intent":"not_interested","urgency":"low","confidence":90,"extracted_questions":[],"recommended_action":"Close the lead politely and do not continue contacting unless invited.","suggested_response":"Thanks for letting me know. I appreciate the response and wish you the best with the project.","next_action":"close"}
+        return {"sentiment":"neutral","intent":"other","urgency":"low","confidence":50,"extracted_questions":[],"recommended_action":"Review the reply and determine whether clarification is needed.","suggested_response":"Thanks for the update. I will review the details and get back to you with the next step.","next_action":"review"}
     client=OpenAI(api_key=settings.OPENAI_API_KEY)
     response=client.responses.create(
         model=settings.OPENAI_MODEL,
