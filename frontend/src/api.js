@@ -25,6 +25,7 @@ createMeeting:data=>request("/meetings/create/",{method:"POST",body:JSON.stringi
 updateMeeting:(id,data)=>request("/meetings/"+id+"/",{method:"PATCH",body:JSON.stringify(data)}),
 learning:()=>request("/learning/"),
 refreshLearning:()=>request("/learning/refresh/",{method:"POST"}),
+acquisitionQueue:()=>request("/acquisition/queue/"),acquisitionNextActions:()=>request("/acquisition/next-actions/"),recalculateAcquisition:()=>request("/acquisition/recalculate/",{method:"POST"}),acquisitionAction:(id,data)=>request("/acquisition/"+id+"/action/",{method:"POST",body:JSON.stringify(data)}),
 syncClients:()=>request("/clients/sync/",{method:"POST"}),
 discoveryProfiles:()=>request("/discovery/profiles/"),
  leads:(page=1)=>request("/leads/?page="+page+"&page_size=50"),
