@@ -35,6 +35,18 @@ class Reply(models.Model):
     intent=models.CharField(max_length=50,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)
 
+class DiscoveryQueryCache(models.Model):
+    query=models.CharField(max_length=1000)
+    normalized_query=models.CharField(max_length=1000,db_index=True)
+    profile_id=models.CharField(max_length=100,default="custom",db_index=True)
+    searched_at=models.DateTimeField(null=True,blank=True,db_index=True)
+    result_count=models.PositiveIntegerField(default=0)
+    created_at=models.DateTimeField(auto_now_add=True)
+    updated_at=models.DateTimeField(auto_now=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=["profile_id","normalized_query"],name="unique_discovery_query_cache")]
+        ordering=["searched_at","created_at"]
+
 class ActivityLog(models.Model):
     lead=models.ForeignKey(Lead,on_delete=models.CASCADE,null=True,blank=True,related_name="activity"); event_type=models.CharField(max_length=100)
     message=models.TextField(); metadata=models.JSONField(default=dict,blank=True); created_at=models.DateTimeField(auto_now_add=True)
