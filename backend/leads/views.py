@@ -15,7 +15,7 @@ from .ai_service import analyze_lead, generate_proposal
 from .discovery.live_provider import LiveDiscoveryError
 from .discovery.mock_provider import DiscoveryError
 from .discovery.service import DiscoveryService
-from .discovery.profiles import public_profiles
+from .discovery.profiles import public_profiles, strategy_performance
 from .discovery_cycle import run_discovery_cycle
 from .lead_optimizer import local_lead_score, should_ai_qualify, ai_skip_analysis
 from .followup_service import process_due_followups as process_due_followups_service
@@ -183,7 +183,7 @@ class LeadViewSet(viewsets.ModelViewSet):
 
 @api_view(["GET"])
 def discovery_profiles(request):
-    return Response({"profiles":public_profiles()})
+    return Response({"profiles":public_profiles(),"strategy_performance":strategy_performance()})
 
 @api_view(["GET"])
 def analytics(request):
