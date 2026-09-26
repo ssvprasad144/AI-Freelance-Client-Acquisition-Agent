@@ -38,8 +38,9 @@ def _store(items):
             if existing:
                 existing.last_verified_at=timezone.now()
                 if item.get("expires_at"): existing.expires_at=item.get("expires_at")
-                existing.save(update_fields=["last_verified_at","expires_at","updated_at"]); duplicates+=1; continue
-            Lead.objects.create(title=item["title"],normalized_title=nt,normalized_url=nu,company=item.get("company",""),description=item["description"],source=item.get("source") or "web_search",source_url=item["source_url"],lead_type=item.get("lead_type","freelance"),budget_text=item.get("budget_text",""),technologies=item.get("technologies") or [],contact_info=item.get("contact_info") or {},discovered_at=timezone.now(),posted_at=item.get("posted_at") or None,expires_at=item.get("expires_at") or None,last_verified_at=timezone.now()); created+=1
+                if item.get("action_url"): existing.action_url=item.get("action_url")
+                existing.save(update_fields=["last_verified_at","expires_at","action_url","updated_at"]); duplicates+=1; continue
+            Lead.objects.create(title=item["title"],normalized_title=nt,normalized_url=nu,company=item.get("company",""),description=item["description"],source=item.get("source") or "web_search",source_url=item["source_url"],action_url=item.get("action_url") or item["source_url"],lead_type=item.get("lead_type","freelance"),budget_text=item.get("budget_text",""),technologies=item.get("technologies") or [],contact_info=item.get("contact_info") or {},discovered_at=timezone.now(),posted_at=item.get("posted_at") or None,expires_at=item.get("expires_at") or None,last_verified_at=timezone.now()); created+=1
     return created,duplicates,invalid
 
 def _fresh_qualified_inventory():
