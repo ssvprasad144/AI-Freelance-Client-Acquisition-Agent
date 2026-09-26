@@ -32,10 +32,15 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - run: python manage.py test
+      - run: python manage.py check --deploy
         env:
           DJANGO_SECRET_KEY: ci-secret
           DEBUG: "false"
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/freelance_agent_ci
           DATABASE_SSL_REQUIRE: "false"
           SECURE_SSL_REDIRECT: "false"
+          ALLOWED_HOSTS: "localhost"
+          CORS_ALLOWED_ORIGINS: "http://localhost:5173"
+          CSRF_TRUSTED_ORIGINS: "http://localhost:5173"
+      - run: python manage.py test
+        env:
