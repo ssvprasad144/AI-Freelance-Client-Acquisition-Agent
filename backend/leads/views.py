@@ -182,10 +182,12 @@ class LeadViewSet(viewsets.ModelViewSet):
         if not (analysis.relevant and analysis.match_score>=settings.QUALIFICATION_MIN_SCORE):
             return Response({"detail":f"Only qualified leads can generate proposals. Required score: {settings.QUALIFICATION_MIN_SCORE}."},status=400)
         delivery=_proposal_delivery(lead)
+        sync_lead_client(lead)
+        if lead.client_id and not hasattr(lead.client,"intelligence"):
+            generate_client_intelligence(lead.client)
         proposal,version=create_proposal(lead,analysis,delivery["medium"])
         outreach=Outreach.objects.create(lead=lead,proposal=proposal,channel=delivery["medium"],medium=delivery["medium"],action_type=delivery["action_type"],destination_url=delivery["action_url"] or "",message=version.content,status="draft")
         lead.status="proposal"; lead.save(update_fields=["status","updated_at"])
-        sync_lead_client(lead)
         log_acquisition_event(lead,"proposal_generated",{"proposal_id":proposal.id,"outreach_id":outreach.id})
         ActivityLog.objects.create(lead=lead,event_type="proposal.generated",message="Versioned proposal draft generated. No message was sent.",metadata={"outreach_id":outreach.id,"proposal_id":proposal.id,"version":version.version_number})
         return Response({"outreach_id":outreach.id,"proposal_id":proposal.id,"version":version.version_number,"status":"draft","message":version.content,"medium":outreach.medium,"action_type":outreach.action_type,"destination_url":outreach.destination_url,"lead_source_url":lead.source_url,"can_send":outreach.medium=="email"})
