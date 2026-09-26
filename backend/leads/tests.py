@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -70,3 +71,19 @@ class FollowUpLifecycleTests(TestCase):
         response = self.client.get("/api/followups/due/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, [])
+
+
+    def test_management_command_processes_due_followup(self):
+        FollowUp.objects.create(
+            lead=self.lead,
+            scheduled_at=timezone.now() - timedelta(minutes=1),
+            message="Worker follow-up.",
+            status="approved",
+        )
+
+        call_command("process_due_followups")
+
+        self.assertEqual(
+            FollowUp.objects.filter(status="due").count(),
+            1,
+        )
