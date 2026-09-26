@@ -200,7 +200,6 @@ class LeadViewSet(viewsets.ModelViewSet):
         return Response(LeadSerializer(lead).data)
 
 @api_view(["GET"])
-@api_view(["GET"])
 def proposal_workspace(request, pk):
     try: proposal=Proposal.objects.prefetch_related("versions").get(pk=pk)
     except Proposal.DoesNotExist: return Response({"detail":"Proposal not found."},status=404)
@@ -244,10 +243,13 @@ def proposals(request):
 def create_followup_sequence(request, pk):
     try: lead=Lead.objects.get(pk=pk)
     except Lead.DoesNotExist: return Response({"detail":"Lead not found."},status=404)
-    try: max_steps=int(request.data.get("max_steps",3))
+    try: max_steps=max(1,min(int(request.data.get("max_steps",3)),5))
     except (TypeError,ValueError): max_steps=3
     delays=request.data.get("delays_days") or [3,5,7]
-    if not isinstance(delays,list) or not delays or any(int(x)<=0 for x in delays): return Response({"detail":"delays_days must contain positive day values."},status=400)
+    if not isinstance(delays,list) or not delays: return Response({"detail":"delays_days must be a non-empty array."},status=400)
+    try: delays=[int(x) for x in delays]
+    except (TypeError,ValueError): return Response({"detail":"delays_days must contain integers."},status=400)
+    if any(x<=0 for x in delays): return Response({"detail":"delays_days must contain positive day values."},status=400)
     sequence,followup=create_sequence(lead,delays,max_steps)
     ActivityLog.objects.create(lead=lead,event_type="followup.sequence_created",message="Intelligent follow-up sequence created as drafts. No message was sent.",metadata={"sequence_id":sequence.id,"first_followup_id":followup.id})
     return Response({"sequence":FollowUpSequenceSerializer(sequence).data,"first_followup":FollowUpSerializer(followup).data},status=201)
