@@ -7,7 +7,7 @@ from collections import defaultdict
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 from urllib.robotparser import RobotFileParser
-from urllib.request import Request, build_opener, HTTPRedirectHandler
+from urllib.request import Request, build_opener, HTTPRedirectHandler\nfrom urllib.error import HTTPError
 from django.conf import settings
 
 class CrawlError(Exception):
