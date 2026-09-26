@@ -16,8 +16,10 @@ class APITestBase(TestCase):
 
 class AuthTests(TestCase):
     def test_protected_endpoint_requires_auth(self): self.assertEqual(APIClient().get("/api/dashboard/").status_code,401)
+    def test_token_endpoint_is_not_exposed(self): self.assertEqual(APIClient().post("/api/auth/token/",{"username":"user","password":"pass12345"},format="json").status_code,404)
     def test_login_returns_token(self):
         get_user_model().objects.create_user(username="user",password="pass12345"); response=APIClient().post("/api/auth/login/",{"username":"user","password":"pass12345"},format="json"); self.assertEqual(response.status_code,200); self.assertTrue(response.data["token"])
+    def test_process_due_followups_http_endpoint_is_not_exposed(self): self.assertEqual(APIClient().post("/api/followups/process-due/",format="json").status_code,404)
 
 class FollowUpLifecycleTests(APITestBase):
     def test_create_and_approve_followup(self):
