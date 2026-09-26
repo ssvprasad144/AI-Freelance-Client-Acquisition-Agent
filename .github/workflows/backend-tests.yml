@@ -38,3 +38,4 @@ jobs:
           DEBUG: "false"
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/freelance_agent_ci
           DATABASE_SSL_REQUIRE: "false"
+          SECURE_SSL_REDIRECT: "false"
