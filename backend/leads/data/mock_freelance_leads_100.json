@@ -1,0 +1,47 @@
+[
+  {
+    "title": "Django Automation Dashboard",
+    "company": "Sample Client",
+    "description": "Build a Django dashboard with automated workflow steps and REST APIs.",
+    "source": "mock",
+    "source_url": "https://example.com/mock/django-automation",
+    "lead_type": "freelance",
+    "budget_text": "$800-$1,500",
+    "technologies": [
+      "Django",
+      "REST API",
+      "PostgreSQL"
+    ],
+    "contact_info": {}
+  },
+  {
+    "title": "AI Workflow Assistant",
+    "company": "Sample Startup",
+    "description": "Create an AI assistant that automates internal business workflows.",
+    "source": "mock",
+    "source_url": "https://example.com/mock/ai-workflow",
+    "lead_type": "startup",
+    "budget_text": "$1,000-$2,000",
+    "technologies": [
+      "AI",
+      "Python",
+      "OpenAI"
+    ],
+    "contact_info": {}
+  },
+  {
+    "title": "React Three.js Landing Page",
+    "company": "Sample Product Team",
+    "description": "Create an interactive React landing page with a lightweight Three.js experience.",
+    "source": "mock",
+    "source_url": "https://example.com/mock/threejs",
+    "lead_type": "freelance",
+    "budget_text": "$700-$1,200",
+    "technologies": [
+      "React",
+      "Three.js",
+      "Vite"
+    ],
+    "contact_info": {}
+  }
+]
