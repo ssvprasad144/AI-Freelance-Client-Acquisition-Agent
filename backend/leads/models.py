@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 class Lead(models.Model):
     STATUS=[("new","New"),("qualified","Qualified"),("proposal","Proposal"),("contacted","Contacted"),("replied","Replied"),("won","Won"),("lost","Lost"),("archived","Archived")]
@@ -7,6 +8,8 @@ class Lead(models.Model):
     company=models.CharField(max_length=255,blank=True); description=models.TextField(); source=models.CharField(max_length=100,default="mock"); source_url=models.URLField(blank=True); action_url=models.URLField(blank=True)
     lead_type=models.CharField(max_length=30,choices=TYPE,default="freelance"); budget_text=models.CharField(max_length=255,blank=True)
     technologies=models.JSONField(default=list,blank=True); contact_info=models.JSONField(default=dict,blank=True); status=models.CharField(max_length=30,choices=STATUS,default="new")
+    client=models.ForeignKey("Client",on_delete=models.SET_NULL,null=True,blank=True,related_name="leads"); contact=models.ForeignKey("Contact",on_delete=models.SET_NULL,null=True,blank=True,related_name="leads")
+    discovery_profile=models.CharField(max_length=100,blank=True,db_index=True); discovery_strategy=models.CharField(max_length=100,blank=True,db_index=True); discovery_query=models.CharField(max_length=1000,blank=True)
     discovered_at=models.DateTimeField(null=True,blank=True); posted_at=models.DateTimeField(null=True,blank=True); expires_at=models.DateTimeField(null=True,blank=True); last_verified_at=models.DateTimeField(null=True,blank=True)
     created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True)
     class Meta: ordering=["-created_at"]
@@ -54,6 +57,9 @@ class FollowUpSequence(models.Model):
     stop_on_reply=models.BooleanField(default=True)
     stop_on_terminal_status=models.BooleanField(default=True)
     current_step=models.PositiveSmallIntegerField(default=0)
+    medium=models.CharField(max_length=40,default="email")
+    action_type=models.CharField(max_length=50,default="send_email")
+    destination_url=models.URLField(blank=True)
     delays_days=models.JSONField(default=list,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)
     updated_at=models.DateTimeField(auto_now=True)
@@ -62,6 +68,9 @@ class FollowUp(models.Model):
     STATUS=[("draft","Draft"),("approved","Approved"),("due","Due"),("sent","Sent"),("cancelled","Cancelled")]
     lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="followups"); sequence=models.ForeignKey(FollowUpSequence,on_delete=models.SET_NULL,null=True,blank=True,related_name="followups")
     step_number=models.PositiveSmallIntegerField(default=1)
+    medium=models.CharField(max_length=40,default="email")
+    action_type=models.CharField(max_length=50,default="send_email")
+    destination_url=models.URLField(blank=True)
     scheduled_at=models.DateTimeField(); message=models.TextField()
     status=models.CharField(max_length=20,default="draft"); approved_at=models.DateTimeField(null=True,blank=True); sent_at=models.DateTimeField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True)
 
@@ -144,3 +153,101 @@ class DiscoveryDomainStat(models.Model):
     updated_at=models.DateTimeField(auto_now=True)
     class Meta:
         ordering=["-qualified","-results"]
+
+
+class Client(models.Model):
+    STATUS=[("active","Active"),("prospect","Prospect"),("won","Won"),("lost","Lost"),("archived","Archived")]
+    company=models.CharField(max_length=255)
+    normalized_company=models.CharField(max_length=255,unique=True,db_index=True)
+    domain=models.CharField(max_length=255,blank=True,db_index=True)
+    industry=models.CharField(max_length=120,blank=True)
+    notes=models.TextField(blank=True)
+    status=models.CharField(max_length=20,choices=STATUS,default="prospect",db_index=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+    updated_at=models.DateTimeField(auto_now=True)
+    class Meta: ordering=["-updated_at"]
+    def __str__(self): return self.company
+
+class Contact(models.Model):
+    client=models.ForeignKey(Client,on_delete=models.CASCADE,related_name="contacts")
+    name=models.CharField(max_length=255,blank=True)
+    email=models.EmailField(blank=True)
+    profile_url=models.URLField(blank=True)
+    role=models.CharField(max_length=120,blank=True)
+    metadata=models.JSONField(default=dict,blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+    updated_at=models.DateTimeField(auto_now=True)
+
+class Conversation(models.Model):
+    STATUS=[("open","Open"),("waiting","Waiting"),("closed","Closed")]
+    client=models.ForeignKey(Client,on_delete=models.CASCADE,related_name="conversations")
+    contact=models.ForeignKey(Contact,on_delete=models.SET_NULL,null=True,blank=True,related_name="conversations")
+    lead=models.ForeignKey(Lead,on_delete=models.SET_NULL,null=True,blank=True,related_name="conversations")
+    channel=models.CharField(max_length=40,default="email")
+    status=models.CharField(max_length=20,choices=STATUS,default="open")
+    last_interaction_at=models.DateTimeField(null=True,blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+    updated_at=models.DateTimeField(auto_now=True)
+
+class ConversationMessage(models.Model):
+    DIRECTION=[("inbound","Inbound"),("outbound","Outbound")]
+    conversation=models.ForeignKey(Conversation,on_delete=models.CASCADE,related_name="messages")
+    direction=models.CharField(max_length=20,choices=DIRECTION)
+    message=models.TextField()
+    occurred_at=models.DateTimeField(default=timezone.now)
+    metadata=models.JSONField(default=dict,blank=True)
+
+class ClientIntelligence(models.Model):
+    client=models.OneToOneField(Client,on_delete=models.CASCADE,related_name="intelligence")
+    summary=models.TextField(blank=True)
+    communication_style=models.CharField(max_length=120,blank=True)
+    preferences=models.JSONField(default=list,blank=True)
+    objections=models.JSONField(default=list,blank=True)
+    recommended_approach=models.TextField(blank=True)
+    confidence=models.PositiveSmallIntegerField(default=0)
+    model=models.CharField(max_length=100,default="deterministic")
+    generated_at=models.DateTimeField(auto_now=True)
+
+class Meeting(models.Model):
+    STATUS=[("requested","Requested"),("scheduled","Scheduled"),("completed","Completed"),("cancelled","Cancelled"),("no_show","No-show")]
+    lead=models.ForeignKey(Lead,on_delete=models.SET_NULL,null=True,blank=True,related_name="meetings")
+    client=models.ForeignKey(Client,on_delete=models.SET_NULL,null=True,blank=True,related_name="meetings")
+    contact=models.ForeignKey(Contact,on_delete=models.SET_NULL,null=True,blank=True,related_name="meetings")
+    status=models.CharField(max_length=20,choices=STATUS,default="requested",db_index=True)
+    scheduled_at=models.DateTimeField(null=True,blank=True)
+    completed_at=models.DateTimeField(null=True,blank=True)
+    meeting_url=models.URLField(blank=True)
+    notes=models.TextField(blank=True)
+    outcome=models.TextField(blank=True)
+    next_action=models.CharField(max_length=120,blank=True)
+    created_at=models.DateTimeField(auto_now_add=True)
+    updated_at=models.DateTimeField(auto_now=True)
+
+class AcquisitionEvent(models.Model):
+    lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="acquisition_events")
+    event_type=models.CharField(max_length=40,db_index=True)
+    source=models.CharField(max_length=100,blank=True,db_index=True)
+    profile_id=models.CharField(max_length=100,blank=True,db_index=True)
+    strategy_id=models.CharField(max_length=100,blank=True,db_index=True)
+    query=models.CharField(max_length=1000,blank=True)
+    domain=models.CharField(max_length=255,blank=True,db_index=True)
+    metadata=models.JSONField(default=dict,blank=True)
+    occurred_at=models.DateTimeField(default=timezone.now,db_index=True)
+
+class LearningStat(models.Model):
+    DIMENSIONS=[("source","Source"),("profile","Profile"),("strategy","Strategy"),("domain","Domain"),("lead_type","Lead type"),("query","Query")]
+    dimension=models.CharField(max_length=30,choices=DIMENSIONS,db_index=True)
+    key=models.CharField(max_length=1000,db_index=True)
+    attempts=models.PositiveIntegerField(default=0)
+    qualified=models.PositiveIntegerField(default=0)
+    proposals=models.PositiveIntegerField(default=0)
+    sent=models.PositiveIntegerField(default=0)
+    replies=models.PositiveIntegerField(default=0)
+    meetings=models.PositiveIntegerField(default=0)
+    wins=models.PositiveIntegerField(default=0)
+    losses=models.PositiveIntegerField(default=0)
+    reward=models.FloatField(default=0)
+    updated_at=models.DateTimeField(auto_now=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=["dimension","key"],name="unique_learning_dimension_key")]
+        ordering=["-reward","-updated_at"]

@@ -86,6 +86,8 @@ def send_email(outreach):
 def send_followup(followup):
     if followup.status!="due":
         raise ValueError("Only due follow-ups can be sent.")
+    if followup.medium != "email":
+        raise ValueError(f"Manual follow-up required: open {followup.destination_url or 'the source destination'} and submit the approved draft there.")
     recipient=(followup.lead.contact_info or {}).get("email")
     if not recipient:
         raise ValueError("Lead has no verified email contact.")
@@ -102,5 +104,5 @@ def send_followup(followup):
         server.send_message(message)
     followup.status="sent"; followup.sent_at=timezone.now(); followup.save(update_fields=["status","sent_at"])
     next_followup=schedule_next_step(followup)
-    ActivityLog.objects.create(lead=followup.lead,event_type="followup.sent",message="Approved due follow-up sent through configured email provider.",metadata={"followup_id":followup.id,"next_followup_id":next_followup.id if next_followup else None})
-    return {"sent":True,"followup_id":followup.id,"next_followup_id":next_followup.id if next_followup else None}
+    ActivityLog.objects.create(lead=followup.lead,event_type="followup.sent",message="Approved due email follow-up sent through configured provider.",metadata={"followup_id":followup.id,"next_followup_id":next_followup.id if next_followup else None})
+    return {"sent":True,"followup_id":followup.id,"next_followup_id":next_followup.id if next_followup else None,"medium":"email"}

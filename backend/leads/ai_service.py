@@ -105,6 +105,8 @@ def analyze_lead(lead) -> dict[str, Any]:
 def generate_proposal(lead, analysis) -> str:
     if not settings.OPENAI_API_KEY:
         parts = personalize_proposal(lead, analysis)
+        if getattr(lead,"client_id",None) and hasattr(lead.client,"intelligence") and lead.client.intelligence.recommended_approach:
+            parts["approach"] = lead.client.intelligence.recommended_approach
         return "\n\n".join([parts["opening"], parts["fit"], parts["evidence"], parts["approach"], parts["next_step"], parts["closing"]])
 
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
@@ -117,6 +119,7 @@ def generate_proposal(lead, analysis) -> str:
             "budget_text": lead.budget_text,
             "technologies": lead.technologies[:20],
         },
+        "client_intelligence": ({"summary":lead.client.intelligence.summary,"communication_style":lead.client.intelligence.communication_style,"preferences":lead.client.intelligence.preferences,"objections":lead.client.intelligence.objections,"recommended_approach":lead.client.intelligence.recommended_approach} if getattr(lead,"client_id",None) and hasattr(lead.client,"intelligence") else {}),
         "analysis": {
             "service_match": analysis.service_match,
             "requirements": analysis.requirements[:12],

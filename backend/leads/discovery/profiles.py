@@ -148,3 +148,44 @@ def select_profile(ttl_hours,only_if_due=True,strategy_id=None):
     _,_,p,q,variant=min(candidates,key=lambda x:(x[0],x[1]))
     return {**p,"strategy_id":strategy["id"],"query":q,"query_variant":variant,"query_family":query_family(p["id"],strategy["id"]),"selection_mode":"adaptive" if explicit else "contextual-bandit","context_size":select_context_size(p["id"],strategy["id"]),"domain_exclusions":domain_exclusions()}
 
+
+
+def arm_performance(lookback_days=None):
+    """Return performance for every profile × strategy discovery arm."""
+    total=DiscoverySearchStat.objects.filter(
+        search_date__gte=timezone.localdate()-timezone.timedelta(days=lookback_days or settings.DISCOVERY_LEARNING_LOOKBACK_DAYS)
+    ).count()
+    return [
+        _arm_score(profile["id"], strategy["id"], lookback_days, total)
+        for profile in DISCOVERY_PROFILES
+        for strategy in STRATEGIES
+    ]
+
+def public_profiles():
+    """Return discovery profiles and their current adaptive performance."""
+    return [
+        {**profile, "strategy_ids": [strategy["id"] for strategy in STRATEGIES]}
+        for profile in DISCOVERY_PROFILES
+    ]
+
+def strategy_performance(lookback_days=None):
+    """Return compact strategy learning data for the discovery UI/API."""
+    return [
+        {**strategy, "performance": _score(strategy["id"], lookback_days)}
+        for strategy in STRATEGIES
+    ]
+
+
+def query_similarity(left, right):
+    """Return a lightweight token Jaccard similarity for query reuse."""
+    a=set(re.findall(r"[a-z0-9]{3,}", normalize_query(left)))
+    b=set(re.findall(r"[a-z0-9]{3,}", normalize_query(right)))
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+def reusable_cache(query, profile_id=""):
+    """Find the most similar recent cached query for a profile."""
+    cutoff=timezone.now()-timezone.timedelta(hours=settings.DISCOVERY_QUERY_CACHE_TTL_HOURS)
+    qs=DiscoveryQueryCache.objects.filter(profile_id=profile_id, searched_at__gte=cutoff).order_by("-searched_at")[:100]
+    return max(qs, key=lambda cache: query_similarity(query, cache.query), default=None)
