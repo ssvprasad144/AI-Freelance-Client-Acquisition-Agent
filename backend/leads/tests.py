@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -150,7 +150,7 @@ class WebSearchCostV2Tests(APITestBase):
     @patch("leads.discovery_cycle.DiscoveryService.discover")
     def test_cross_profile_cache_reuse(self,discover):
         payload=self._cached_payload()
-        DiscoveryQueryCache.objects.create(profile_id="ai-automation",normalized_query="current django automation client request",query="current django automation client request",query_family="ai-automation:community",query_signature="reuse",searched_at=timezone.now(),result_count=1,result_payload=payload,source_domains=["reuse.example"])
+        DiscoveryQueryCache.objects.create(profile_id="ai-automation",normalized_query="current django automation client request",query="current django automation client request",query_family="ai-automation:community",query_signature=query_signature("current django automation client request"),searched_at=timezone.now(),result_count=1,result_payload=payload,source_domains=["reuse.example"])
         result=__import__("leads.discovery_cycle",fromlist=["run_discovery_cycle"]).run_discovery_cycle(query="current django automation project request",profile_id="django-fullstack",strategy_id="community")
         self.assertEqual(discover.call_count,0)
         self.assertTrue(result["reused"])
@@ -162,7 +162,7 @@ class WebSearchCostV2Tests(APITestBase):
 
     def test_query_variants_are_tracked(self):
         DiscoverySearchStat.objects.create(profile_id="ai-automation",strategy_id="community",query="x",normalized_query="x",query_family="ai-automation:community",query_variant="client-request",source="web_search",search_date=timezone.localdate(),qualified=2)
-        from .discovery.profiles import select_query_variant
+        from .discovery.profiles import query_signature, select_query_variant
         self.assertIn(select_query_variant("ai-automation","community"),{"base","recent","client-request","project"})
 
     def test_adaptive_context_stays_low_for_new_arms(self):
@@ -171,5 +171,5 @@ class WebSearchCostV2Tests(APITestBase):
 
     def test_preferred_search_window_can_defer_search(self):
         from .discovery.profiles import preferred_search_window_open
-        with patch("leads.discovery.profiles.settings.DISCOVERY_PREFERRED_HOURS_ENABLED",True), patch("leads.discovery.profiles.timezone.localtime",return_value=timezone.datetime(3,0,tzinfo=timezone.get_current_timezone())):
+        with patch("leads.discovery.profiles.settings.DISCOVERY_PREFERRED_HOURS_ENABLED",True), patch("leads.discovery.profiles.timezone.localtime",return_value=datetime(2026,1,1,3,0,tzinfo=timezone.get_current_timezone())):
             self.assertFalse(preferred_search_window_open())
