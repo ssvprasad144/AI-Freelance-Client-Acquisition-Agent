@@ -29,7 +29,7 @@ class FollowUpLifecycleTests(APITestBase):
         result=process_due_followups(); self.assertEqual(result["processed"],1); self.assertFalse(result["sent"]); followup.refresh_from_db(); self.assertEqual(followup.status,"due"); self.assertEqual(ActivityLog.objects.filter(event_type="followup.due").count(),1); result=process_due_followups(); self.assertEqual(result["processed"],0)
     def test_future_approved_followup_is_not_due(self):
         FollowUp.objects.create(lead=self.lead,scheduled_at=timezone.now()+timedelta(hours=1),message="Future follow-up.",status="approved"); self.client.post("/api/followups/process-due/",format="json"); response=self.client.get("/api/followups/due/"); self.assertEqual(response.status_code,200); self.assertEqual(response.data["results"],[])
-    def test_management_command_processes_due_followup(self): FollowUp.objects.create(lead=self.lead,scheduled_at=timezone.now()-timedelta(minutes=1),message="Worker follow-up.",status="approved"); call_command("process_due_followups"); self.assertEqual(FollowUp.objects.filter(status="due").count(),1)
+    def test_management_command_processes_due_followup(self): FollowUp.objects.create(lead=self.lead,scheduled_at=timezone.now()-timedelta(minutes=1),message="Worker follow-up.",status="approved"); call_command("process_due_followups"); self.assertEqual(FollowUp.objects.filter(status="due").count(),1); completed=ActivityLog.objects.filter(event_type="cron.followup.completed").latest("created_at"); self.assertTrue(completed.metadata["run_id"]); self.assertGreaterEqual(completed.metadata["duration_ms"],0); self.assertFalse(completed.metadata["sent"])
 
 class LeadLifecycleTests(APITestBase):
     def test_status_and_reply(self):
@@ -40,7 +40,7 @@ class DiscoveryWorkerTests(APITestBase):
     @patch("leads.discovery_cycle.analyze_lead")
     @patch("leads.discovery_cycle.DiscoveryService.discover")
     def test_discovery_worker_discovers_and_qualifies(self,discover,analyze):
-        discover.return_value=self._result(); analyze.return_value={"relevant":True,"match_score":85,"service_match":"AI Products","requirements":["Django"],"pain_points":[],"recommended_approach":"Build the smallest useful workflow first.","matching_projects":["AI Business Automation Dashboard"],"confidence":90,"model":"gpt-4o-mini","input_tokens":10,"output_tokens":10}; call_command("run_discovery_cycle","--source","live","--limit","5"); self.assertEqual(Lead.objects.get(title="AI Automation Dashboard").status,"qualified"); self.assertEqual(DiscoverySearchStat.objects.count(),1)
+        discover.return_value=self._result(); analyze.return_value={"relevant":True,"match_score":85,"service_match":"AI Products","requirements":["Django"],"pain_points":[],"recommended_approach":"Build the smallest useful workflow first.","matching_projects":["AI Business Automation Dashboard"],"confidence":90,"model":"gpt-4o-mini","input_tokens":10,"output_tokens":10}; call_command("run_discovery_cycle","--source","live","--limit","5"); self.assertEqual(Lead.objects.get(title="AI Automation Dashboard").status,"qualified"); self.assertEqual(DiscoverySearchStat.objects.count(),1); completed=ActivityLog.objects.filter(event_type="cron.discovery.completed").latest("created_at"); self.assertTrue(completed.metadata["run_id"]); self.assertGreaterEqual(completed.metadata["duration_ms"],0)
     @patch("leads.discovery_cycle.analyze_lead")
     @patch("leads.discovery_cycle.DiscoveryService.discover")
     def test_discovery_worker_deduplicates_on_repeat_cycle(self,discover,analyze):
