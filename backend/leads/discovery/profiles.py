@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from django.db.models import Avg, Sum
+from django.db.models import Sum
+from django.conf import settings
 from django.utils import timezone
 
 from ..models import DiscoveryQueryCache, DiscoverySearchStat
@@ -26,8 +27,8 @@ def _profile_history(profile_id, lookback_days=30):
     return DiscoverySearchStat.objects.filter(profile_id=profile_id, search_date__gte=since)
 
 
-def _score(profile_id, lookback_days=30):
-    qs = _profile_history(profile_id, lookback_days)
+def _score(profile_id, lookback_days=None):
+    qs = _profile_history(profile_id, lookback_days or settings.DISCOVERY_LEARNING_LOOKBACK_DAYS)
     searches = qs.count()
     if not searches:
         return {"searches": 0, "qualified_per_search": 0.0, "created_per_search": 0.0, "reply_per_search": 0.0, "score": 0.0}
@@ -61,7 +62,7 @@ def select_profile(ttl_hours, only_if_due=True):
         eligible = DISCOVERY_PROFILES
 
     # Exploration floor: profiles with fewer than N observed searches are sampled first.
-    minimum_exploration = 2
+    minimum_exploration = settings.DISCOVERY_MIN_EXPLORATION_SEARCHES
     observed = [(profile, _score(profile["id"])) for profile in eligible]
     under_sampled = [item for item in observed if item[1]["searches"] < minimum_exploration]
     if under_sampled:
@@ -79,8 +80,9 @@ def select_profile(ttl_hours, only_if_due=True):
     )
 
 
-def profile_performance(lookback_days=30):
-    return [{"profile": profile, "performance": _score(profile["id"], lookback_days)} for profile in DISCOVERY_PROFILES]
+def profile_performance(lookback_days=None):
+    days = lookback_days or settings.DISCOVERY_LEARNING_LOOKBACK_DAYS
+    return [{"profile": profile, "performance": _score(profile["id"], days)} for profile in DISCOVERY_PROFILES]
 
 
 def public_profiles():
