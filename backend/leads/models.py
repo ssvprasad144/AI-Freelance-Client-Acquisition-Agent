@@ -50,7 +50,7 @@ class Outreach(models.Model):
     created_at=models.DateTimeField(auto_now_add=True)
 
 class FollowUp(models.Model):
-    STATUS=[("draft","Draft"),("approved","Approved"),("sent","Sent"),("cancelled","Cancelled")]
+    STATUS=[("draft","Draft"),("approved","Approved"),("due","Due"),("sent","Sent"),("cancelled","Cancelled")]
     lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="followups")
     scheduled_at=models.DateTimeField()
     message=models.TextField()
