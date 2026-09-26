@@ -307,6 +307,10 @@ def send_outreach(request,pk):
     except Outreach.DoesNotExist: return Response({"detail":"Outreach not found."},status=404)
     try:
         result=send_email(outreach)
+        plan=OutreachPlan.objects.filter(lead=outreach.lead,channel=outreach.medium,message=outreach.message,status="approved").order_by("-updated_at").first()
+        if plan:
+            from .outreach_intelligence import record_attempt_for_outreach
+            record_attempt_for_outreach(plan)
         OutreachPlan.objects.filter(lead=outreach.lead,channel=outreach.medium,message=outreach.message,status="approved").update(status="sent",sent_at=timezone.now())
         log_acquisition_event(outreach.lead,"sent",{"outreach_id":outreach.id})
         client,contact=sync_lead_client(outreach.lead)
@@ -347,6 +351,10 @@ def mark_outreach_submitted(request,pk):
     if item.status not in {"draft","approved","opened"}: return Response({"detail":"Outreach is not actionable."},status=400)
     item.status="submitted"; item.submitted_at=timezone.now()
     item.save(update_fields=["status","submitted_at"])
+    plan=OutreachPlan.objects.filter(lead=item.lead,channel=item.medium,message=item.message,status="approved").order_by("-updated_at").first()
+    if plan:
+        from .outreach_intelligence import record_attempt_for_outreach
+        record_attempt_for_outreach(plan,item.submitted_at)
     OutreachPlan.objects.filter(lead=item.lead,channel=item.medium,message=item.message,status="approved").update(status="sent",sent_at=timezone.now())
     log_acquisition_event(item.lead,"sent",{"outreach_id":item.id,"manual":True,"medium":item.medium})
     if item.lead.status not in {"replied","won","lost","archived"}:
