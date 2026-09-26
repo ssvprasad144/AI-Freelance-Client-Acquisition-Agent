@@ -163,3 +163,18 @@ def strategy_performance(lookback_days=None):
         {**strategy, "performance": _score(strategy["id"], lookback_days)}
         for strategy in STRATEGIES
     ]
+
+
+def query_similarity(left, right):
+    """Return a lightweight token Jaccard similarity for query reuse."""
+    a=set(re.findall(r"[a-z0-9]{3,}", normalize_query(left)))
+    b=set(re.findall(r"[a-z0-9]{3,}", normalize_query(right)))
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+def reusable_cache(query, profile_id=""):
+    """Find the most similar recent cached query for a profile."""
+    cutoff=timezone.now()-timezone.timedelta(hours=settings.DISCOVERY_QUERY_CACHE_TTL_HOURS)
+    qs=DiscoveryQueryCache.objects.filter(profile_id=profile_id, searched_at__gte=cutoff).order_by("-searched_at")[:100]
+    return max(qs, key=lambda cache: query_similarity(query, cache.query), default=None)
