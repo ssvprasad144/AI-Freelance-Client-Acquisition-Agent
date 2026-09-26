@@ -122,3 +122,28 @@ class PublicCrawlerSafetyTests(TestCase):
             result=discover_live("Django freelance")
         self.assertEqual(len(result["leads"]),1)
         enrich.assert_called_once()
+
+
+class LeadOptimizationTests(TestCase):
+    def test_local_prefilter_accepts_relevant_lead(self):
+        from .lead_optimizer import local_lead_score, should_ai_qualify
+        lead=Lead(title="Build Django AI automation dashboard",description="Need a Python Django developer to build an AI workflow.",source_url="https://example.com/jobs/1",technologies=["Django","AI"])
+        result=local_lead_score(lead)
+        self.assertTrue(result["service_hits"])
+        self.assertTrue(should_ai_qualify(lead))
+        self.assertGreaterEqual(result["score"],20)
+
+    def test_local_prefilter_rejects_obvious_mismatch(self):
+        from .lead_optimizer import local_lead_score, should_ai_qualify
+        lead=Lead(title="SEO content writer",description="Need blog posts and SEO content writing.",source_url="https://example.com/jobs/2",technologies=["SEO"])
+        result=local_lead_score(lead)
+        self.assertFalse(result["service_hits"])
+        self.assertFalse(should_ai_qualify(lead))
+
+    @patch("leads.discovery_cycle.analyze_lead")
+    @patch("leads.discovery_cycle.DiscoveryService.discover")
+    def test_irrelevant_lead_is_filtered_without_ai_call(self,discover,analyze):
+        discover.return_value={"source":"web_search","model":"gpt-4o-mini","leads":[{"title":"SEO content writer","company":"Example","description":"Need SEO content writing.","source":"web_search","source_url":"https://example.com/jobs/3","lead_type":"freelance","budget_text":"","technologies":["SEO"],"contact_info":{}}]}
+        call_command("run_discovery_cycle","--limit","5")
+        self.assertEqual(analyze.call_count,0)
+        self.assertEqual(ActivityLog.objects.filter(event_type="ai.usage").count(),1)
