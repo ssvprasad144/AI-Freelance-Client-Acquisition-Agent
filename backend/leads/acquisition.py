@@ -29,7 +29,9 @@ def personalize_proposal(lead, analysis):
 def classify_reply(reply):
     if not settings.OPENAI_API_KEY:
         text=reply.message.lower()
-        if any(x in text for x in ["interested","let's talk","lets talk","schedule","call","available"]):
+        if any(x in text for x in ["schedule a call","schedule","call next","book a call","meeting"]):
+            return {"sentiment":"positive","intent":"call","urgency":"high","confidence":90,"extracted_questions":[],"recommended_action":"Reply promptly and confirm a concrete meeting time.","suggested_response":"Happy to schedule a call. Please share a convenient time and timezone, and I will confirm.","next_action":"schedule_call"}
+        if any(x in text for x in ["interested","let's talk","lets talk","available"]):
             return {"sentiment":"positive","intent":"interested","urgency":"medium","confidence":85,"extracted_questions":[],"recommended_action":"Reply promptly and propose a concrete next step.","suggested_response":"Thanks for getting back to me. I would be happy to discuss the scope and next steps.","next_action":"reply"}
         if any(x in text for x in ["price","pricing","cost","budget","quote"]):
             return {"sentiment":"neutral","intent":"pricing","urgency":"medium","confidence":80,"extracted_questions":[],"recommended_action":"Clarify scope before giving a firm quote.","suggested_response":"Happy to discuss pricing. I would first confirm the scope, deliverables, and timeline so I can give an accurate estimate.","next_action":"negotiate"}
