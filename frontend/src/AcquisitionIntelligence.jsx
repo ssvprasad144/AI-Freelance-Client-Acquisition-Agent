@@ -10,7 +10,7 @@ export default function AcquisitionIntelligence(){
       setAnalytics(a);setClients(c);setMeetings(m);setLearning(l.stats||[]);
     }catch(e){setError(e.message)}finally{setLoading(false)}
   }
-  useEffect(()=>{if(new URLSearchParams(window.location.search).get("demo")==="1")return;load()},[]);
+  useEffect(()=>{if(import.meta.env.VITE_PUBLIC_PREVIEW!=="false")return;load()},[]);
   async function refreshLearning(){setLoading(true);try{const d=await api.refreshLearning();setLearning(d.stats||[]);const a=await api.analytics();setAnalytics(a)}catch(e){setError(e.message)}finally{setLoading(false)}}
   return <section className="panel" style={{marginTop:20}}>
     <div className="panel-head"><div><div className="eyebrow">PHASES 11–15</div><h2>Client Intelligence & Acquisition Learning</h2></div><button className="secondary" onClick={load} disabled={loading}>{loading?"Refreshing…":"Refresh"}</button></div>
