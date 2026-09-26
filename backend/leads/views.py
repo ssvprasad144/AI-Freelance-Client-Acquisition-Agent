@@ -156,7 +156,9 @@ def create_reply(request,pk):
     except Exception as exc:
         classification={"recommended_action":"Review reply manually.","error":str(exc)}
     lead.status="replied"; lead.save(update_fields=["status","updated_at"])
-    ActivityLog.objects.create(lead=lead,event_type="lead.reply_received",message="Reply recorded manually.",metadata={"reply_id":reply.id})
+    for sequence in FollowUpSequence.objects.filter(lead=lead,status="active"):
+        cancel_if_stopped(sequence)
+    ActivityLog.objects.create(lead=lead,event_type="lead.reply_received",message="Reply recorded and analyzed manually.",metadata={"reply_id":reply.id})
     return Response({**ReplySerializer(reply).data,"classification":classification},status=201)
 
 class LeadViewSet(viewsets.ModelViewSet):
