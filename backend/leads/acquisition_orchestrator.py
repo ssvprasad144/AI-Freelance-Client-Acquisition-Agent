@@ -70,6 +70,9 @@ def execute_action(opportunity,action,mode="approval_required",approved=False):
         raise ValueError("Terminal leads cannot receive acquisition actions.")
     if mode not in {"manual","approval_required","automatic"}:
         raise ValueError("Invalid automation mode.")
+    configured=getattr(settings,"ACQUISITION_AUTOMATION_MODE","approval_required")
+    if mode=="automatic" and configured!="automatic":
+        raise ValueError("Automatic execution is disabled by the configured automation mode.")
     if mode=="approval_required" and not approved:
         opportunity.status="pending_approval"; opportunity.last_action=action; opportunity.save(update_fields=["status","last_action","updated_at"])
         return {"executed":False,"requires_approval":True,"action":action}
