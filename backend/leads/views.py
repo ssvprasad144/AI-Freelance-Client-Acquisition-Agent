@@ -16,7 +16,7 @@ from .discovery.live_provider import LiveDiscoveryError
 from .discovery.mock_provider import DiscoveryError
 from .discovery.service import DiscoveryService
 from .followup_service import process_due_followups as process_due_followups_service
-from .acquisition import classify_reply, send_email
+from .acquisition import classify_reply, send_email, send_followup
 from .analytics import acquisition_metrics
 from .models import ActivityLog, FollowUp, Lead, LeadAnalysis, Outreach, Reply
 from .pagination import StandardPagination
@@ -183,6 +183,16 @@ def discovery_profiles(request):
 @api_view(["GET"])
 def analytics(request):
     return Response(acquisition_metrics())
+
+@api_view(["POST"])
+def send_followup(request,pk):
+    try: followup=FollowUp.objects.select_related("lead").get(pk=pk)
+    except FollowUp.DoesNotExist: return Response({"detail":"Follow-up not found."},status=404)
+    try: return Response(send_followup(followup))
+    except ValueError as exc: return Response({"detail":str(exc),"sent":False},status=400)
+    except Exception as exc:
+        ActivityLog.objects.create(lead=followup.lead,event_type="followup.error",message="Configured follow-up provider failed.",metadata={"followup_id":followup.id,"error":str(exc)})
+        return Response({"detail":"Outbound provider failed.","sent":False},status=502)
 
 @api_view(["POST"])
 def send_outreach(request,pk):
