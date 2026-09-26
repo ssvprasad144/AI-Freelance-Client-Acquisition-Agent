@@ -139,3 +139,23 @@ Live search results can now be enriched by a conservative public-web crawler. Th
 - remains disabled if `CRAWLER_ENABLED=false`
 
 The crawler uses Python's standard library, so no additional scraping framework is required.
+
+
+### Discovery cost optimization
+
+Automated discovery uses a rotating set of four focused profiles. The worker runs one profile per cycle rather than issuing all profile searches at once.
+
+The discovery pipeline is:
+
+Live web search -> query freshness cache -> URL/title/company dedupe -> expiry filter -> deterministic relevance pre-filter -> GPT-4o-mini qualification -> qualified lead.
+
+Default production settings:
+- discovery interval: 6 hours
+- query cache TTL: 36 hours
+- one rotating profile per cycle
+- search context: low
+- deterministic pre-filter before GPT
+- proposals allowed only for qualified leads
+- outbound communication remains approval/provider gated
+
+This keeps recurring search volume bounded while still rotating across AI/automation, Django/full-stack, React/Three.js, and startup-MVP opportunities.
