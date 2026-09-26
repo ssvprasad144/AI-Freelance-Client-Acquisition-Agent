@@ -4,6 +4,7 @@ from django.utils import timezone
 from .models import AcquisitionOpportunity, Lead, ActivityLog, Outreach
 from .proposal_service import create_proposal
 from .meeting_service import sync_meeting_context
+from .outreach_intelligence import create_plan
 from .models import Meeting
 
 STAGE_ACTIONS={
@@ -34,6 +35,7 @@ def next_action(lead):
             return {"action":"await_meeting","reason":"meeting already in progress"}
         return {"action":"book_meeting","reason":"reply received"}
     action,category=STAGE_ACTIONS.get(lead.status,("review","manual_review"))
+    if lead.status=="proposal" and lead.proposals.filter(status="approved").exists(): action="plan_outreach"; category="outreach"
     if lead.status=="new" and getattr(lead,"analysis",None): action="qualify"
     return {"action":action,"category":category}
 
@@ -93,6 +95,8 @@ def execute_action(opportunity,action,mode="approval_required",approved=False):
         if outreach.proposal_id:
             proposal=outreach.proposal; proposal.status="approved"; proposal.approved_at=timezone.now(); proposal.save(update_fields=["status","approved_at","updated_at"])
         outreach.status="approved"; outreach.approved_at=timezone.now(); outreach.save(update_fields=["status","approved_at"])
+    elif action=="plan_outreach":
+        create_plan(lead)
     elif action=="book_meeting":
         meeting=Meeting.objects.create(lead=lead,client=lead.client,status="requested",notes="Created by approved acquisition orchestration.")
         sync_meeting_context(meeting)
