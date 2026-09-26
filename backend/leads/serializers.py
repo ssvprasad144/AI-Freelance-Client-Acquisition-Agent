@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ActivityLog,FollowUp,FollowUpSequence,Lead,LeadAnalysis,Outreach,Proposal,ProposalVersion,Reply,Client,Contact,Conversation,ConversationMessage,ClientIntelligence,Meeting,AcquisitionEvent,LearningStat
+from .models import ActivityLog,FollowUp,FollowUpSequence,Lead,LeadAnalysis,Outreach,Proposal,ProposalVersion,Reply,Client,Contact,Conversation,ConversationMessage,ClientIntelligence,Meeting,AcquisitionEvent,LearningStat,AcquisitionOpportunity,OutreachPlan,RevenueRecord
 
 class LeadAnalysisSerializer(serializers.ModelSerializer):
     class Meta: model=LeadAnalysis; fields="__all__"
