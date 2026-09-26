@@ -1,6 +1,6 @@
 from collections import defaultdict
 from django.db.models import Q
-from .models import AcquisitionEvent, Lead, LearningStat, Meeting, Outreach
+from .models import AcquisitionEvent, DiscoverySearchStat, Lead, LearningStat, Meeting, Outreach
 WEIGHTS={"qualified":1.0,"proposal":2.0,"sent":3.0,"reply":5.0,"meeting":10.0,"won":25.0,"lost":-5.0}
 def lead_reward(lead):
     status=lead.status
@@ -9,7 +9,18 @@ def lead_reward(lead):
     if lead.meetings.filter(status__in=["requested","scheduled","completed"]).exists(): reward=max(reward,WEIGHTS["meeting"])
     if lead.status=="won": reward=WEIGHTS["won"]
     return reward
+def refresh_discovery_outcomes():
+    updated=0
+    for stat in DiscoverySearchStat.objects.all().iterator():
+        leads=Lead.objects.filter(discovery_profile=stat.profile_id,discovery_strategy=stat.strategy_id,discovery_query=stat.query,discovered_at__date=stat.search_date)
+        replies=leads.filter(status__in=["replied","won"]).count()
+        won=leads.filter(status="won").count()
+        if stat.replied != replies or stat.won != won:
+            stat.replied=replies; stat.won=won; stat.save(update_fields=["replied","won","updated_at"]); updated+=1
+    return updated
+
 def refresh_learning():
+    refresh_discovery_outcomes()
     buckets=defaultdict(list)
     for lead in Lead.objects.all():
         keys=[("source",lead.source),("lead_type",lead.lead_type)]
