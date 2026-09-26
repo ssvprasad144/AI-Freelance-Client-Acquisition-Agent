@@ -24,7 +24,19 @@ services:
       - key: DISCOVERY_MODEL
         value: gpt-4o-mini
       - key: DISCOVERY_WORKER_INTERVAL
-        value: "3600"
+        value: "21600"
+      - key: LOCAL_PREFILTER_MIN_SCORE
+        value: "20"
+      - key: AI_MAX_LEAD_DESCRIPTION_CHARS
+        value: "6000"
+      - key: AI_MAX_REPLY_CHARS
+        value: "5000"
+      - key: AI_QUALIFICATION_MAX_OUTPUT_TOKENS
+        value: "450"
+      - key: AI_PROPOSAL_MAX_OUTPUT_TOKENS
+        value: "350"
+      - key: AI_REPLY_MAX_OUTPUT_TOKENS
+        value: "180"
       - key: FOLLOWUP_WORKER_INTERVAL
         value: "60"
       - key: SECURE_SSL_REDIRECT
@@ -54,7 +66,19 @@ services:
       - key: DISCOVERY_MODEL
         value: gpt-4o-mini
       - key: DISCOVERY_WORKER_INTERVAL
-        value: "3600"
+        value: "21600"
+      - key: LOCAL_PREFILTER_MIN_SCORE
+        value: "20"
+      - key: AI_MAX_LEAD_DESCRIPTION_CHARS
+        value: "6000"
+      - key: AI_MAX_REPLY_CHARS
+        value: "5000"
+      - key: AI_QUALIFICATION_MAX_OUTPUT_TOKENS
+        value: "450"
+      - key: AI_PROPOSAL_MAX_OUTPUT_TOKENS
+        value: "350"
+      - key: AI_REPLY_MAX_OUTPUT_TOKENS
+        value: "180"
       - key: FOLLOWUP_WORKER_INTERVAL
         value: "60"
       - key: SECURE_SSL_REDIRECT
@@ -84,7 +108,19 @@ services:
       - key: DISCOVERY_MODEL
         value: gpt-4o-mini
       - key: DISCOVERY_WORKER_INTERVAL
-        value: "3600"
+        value: "21600"
+      - key: LOCAL_PREFILTER_MIN_SCORE
+        value: "20"
+      - key: AI_MAX_LEAD_DESCRIPTION_CHARS
+        value: "6000"
+      - key: AI_MAX_REPLY_CHARS
+        value: "5000"
+      - key: AI_QUALIFICATION_MAX_OUTPUT_TOKENS
+        value: "450"
+      - key: AI_PROPOSAL_MAX_OUTPUT_TOKENS
+        value: "350"
+      - key: AI_REPLY_MAX_OUTPUT_TOKENS
+        value: "180"
       - key: FOLLOWUP_WORKER_INTERVAL
         value: "60"
       - key: SECURE_SSL_REDIRECT
