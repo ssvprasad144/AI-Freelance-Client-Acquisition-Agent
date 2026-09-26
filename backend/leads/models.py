@@ -54,6 +54,7 @@ class FollowUpSequence(models.Model):
     stop_on_reply=models.BooleanField(default=True)
     stop_on_terminal_status=models.BooleanField(default=True)
     current_step=models.PositiveSmallIntegerField(default=0)
+    delays_days=models.JSONField(default=list,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)
     updated_at=models.DateTimeField(auto_now=True)
 
