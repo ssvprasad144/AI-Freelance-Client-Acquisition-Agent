@@ -94,7 +94,7 @@ services:
     name: ai-freelance-client-agent-frontend
     runtime: static
     buildCommand: npm install && npm run build
-    staticPublishPath: frontend/dist
+    staticPublishPath: dist
     rootDir: frontend
     envVars:
       - key: VITE_API_BASE_URL
