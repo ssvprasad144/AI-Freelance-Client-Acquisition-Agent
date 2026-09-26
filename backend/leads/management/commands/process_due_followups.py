@@ -1,5 +1,6 @@
 import time
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from leads.followup_service import process_due_followups
@@ -17,7 +18,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--interval",
             type=int,
-            default=60,
+            default=settings.FOLLOWUP_WORKER_INTERVAL,
             help="Seconds between processing cycles when --loop is enabled.",
         )
 
