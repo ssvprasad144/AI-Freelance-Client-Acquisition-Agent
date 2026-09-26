@@ -70,6 +70,11 @@ def qualify_new_leads(request):
     })
 
 
+@api_view(["GET"])
+def followups(request):
+    qs=FollowUp.objects.filter(status__in=["draft","approved"]).select_related("lead").order_by("scheduled_at")[:100]
+    return Response(FollowUpSerializer(qs,many=True).data)
+
 @api_view(["POST"])
 def create_followup(request, pk=None):
     lead_id=pk or request.data.get("lead_id")
