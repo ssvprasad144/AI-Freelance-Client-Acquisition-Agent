@@ -150,6 +150,17 @@ def select_profile(ttl_hours,only_if_due=True,strategy_id=None):
 
 
 
+def arm_performance(lookback_days=None):
+    """Return performance for every profile × strategy discovery arm."""
+    total=DiscoverySearchStat.objects.filter(
+        search_date__gte=timezone.localdate()-timezone.timedelta(days=lookback_days or settings.DISCOVERY_LEARNING_LOOKBACK_DAYS)
+    ).count()
+    return [
+        _arm_score(profile["id"], strategy["id"], lookback_days, total)
+        for profile in DISCOVERY_PROFILES
+        for strategy in STRATEGIES
+    ]
+
 def public_profiles():
     """Return discovery profiles and their current adaptive performance."""
     return [
