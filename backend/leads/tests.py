@@ -162,7 +162,7 @@ class WebSearchCostV2Tests(APITestBase):
 
     def test_query_variants_are_tracked(self):
         DiscoverySearchStat.objects.create(profile_id="ai-automation",strategy_id="community",query="x",normalized_query="x",query_family="ai-automation:community",query_variant="client-request",source="web_search",search_date=timezone.localdate(),qualified=2)
-        from .discovery.profiles import query_signature, select_query_variant
+        from .discovery.profiles import select_query_variant
         self.assertIn(select_query_variant("ai-automation","community"),{"base","recent","client-request","project"})
 
     def test_adaptive_context_stays_low_for_new_arms(self):
