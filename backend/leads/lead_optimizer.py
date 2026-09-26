@@ -15,17 +15,22 @@ EXCLUSION_TERMS = {"seo", "content writing", "data entry", "crypto trading", "ad
 
 
 def _text(lead):
-    return " ".join([
-        str(getattr(lead, "title", "")),
-        str(getattr(lead, "description", "")),
-        str(getattr(lead, "budget_text", "")),
-        " ".join(getattr(lead, "technologies", []) or []),
-    ]).lower()
+    return " ".join(
+        [
+            str(getattr(lead, "title", "")),
+            str(getattr(lead, "description", "")),
+            str(getattr(lead, "budget_text", "")),
+            " ".join(getattr(lead, "technologies", []) or []),
+        ]
+    ).lower()
 
 
 def local_lead_score(lead):
     text = _text(lead)
-    service_hits = {service: sorted(term for term in terms if term in text) for service, terms in SERVICE_TERMS.items()}
+    service_hits = {
+        service: sorted(term for term in terms if term in text)
+        for service, terms in SERVICE_TERMS.items()
+    }
     service_hits = {k: v for k, v in service_hits.items() if v}
     intent_hits = sorted(term for term in INTENT_TERMS if term in text)
     exclusion_hits = sorted(term for term in EXCLUSION_TERMS if term in text)
@@ -46,9 +51,15 @@ def local_lead_score(lead):
     }
 
 
+def should_crawl_lead(lead):
+    result = local_lead_score(lead)
+    minimum = getattr(settings, "CRAWLER_MIN_LEAD_SCORE", 40)
+    return result["score"] >= minimum and bool(result["service_hits"]) and result["url_ok"]
+
+
 def should_ai_qualify(lead):
     result = local_lead_score(lead)
-    minimum = getattr(settings, "LOCAL_PREFILTER_MIN_SCORE", 25)
+    minimum = getattr(settings, "LOCAL_PREFILTER_MIN_SCORE", 40)
     return result["score"] >= minimum and bool(result["service_hits"]) and result["url_ok"]
 
 
