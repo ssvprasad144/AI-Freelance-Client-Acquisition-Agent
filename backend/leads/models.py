@@ -276,3 +276,12 @@ class OutreachPlan(models.Model):
     class Meta:
         ordering=["-updated_at"]
         constraints=[models.UniqueConstraint(fields=["lead","channel","variant"],name="unique_outreach_plan_variant")]
+
+
+class RevenueRecord(models.Model):
+    lead=models.OneToOneField(Lead,on_delete=models.CASCADE,related_name="revenue")
+    estimated_value=models.DecimalField(max_digits=14,decimal_places=2,default=0); quoted_value=models.DecimalField(max_digits=14,decimal_places=2,default=0); won_value=models.DecimalField(max_digits=14,decimal_places=2,default=0); expected_value=models.DecimalField(max_digits=14,decimal_places=2,default=0)
+    currency=models.CharField(max_length=3,default="USD"); probability=models.FloatField(default=25)
+    search_cost=models.DecimalField(max_digits=14,decimal_places=4,default=0); ai_cost=models.DecimalField(max_digits=14,decimal_places=4,default=0); crawler_cost=models.DecimalField(max_digits=14,decimal_places=4,default=0); outreach_cost=models.DecimalField(max_digits=14,decimal_places=4,default=0)
+    created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True)
+    class Meta: ordering=["-won_value","-expected_value","-updated_at"]
