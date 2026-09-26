@@ -38,6 +38,17 @@ def build_outreach_plans(limit=50):
             if len(rows)>=limit:break
     return rows
 
+def record_attempt_for_outreach(plan, attempted_at=None):
+    """Record a delivered/submitted outreach attempt after the external action succeeds."""
+    attempted_at = attempted_at or timezone.now()
+    plan.attempt_count += 1
+    plan.last_attempt_at = attempted_at
+    plan.status = "sent"
+    plan.sent_at = attempted_at
+    plan.save(update_fields=["attempt_count","last_attempt_at","status","sent_at","updated_at"])
+    return plan
+
+
 def channel_metrics():
     from django.db.models import Count,Q
     return list(OutreachPlan.objects.values("channel").annotate(
@@ -55,8 +66,8 @@ def mark_approved(plan):
         delay_hours=float(getattr(settings,"OUTREACH_MIN_DELAY_HOURS",48))
         if (timezone.now()-plan.last_attempt_at).total_seconds() < delay_hours*3600:
             raise ValueError("Outreach fatigue protection: minimum delay has not elapsed.")
-    plan.status="approved"; plan.approved_at=timezone.now(); plan.attempt_count += 1; plan.last_attempt_at=timezone.now()
-    plan.save(update_fields=["status","approved_at","attempt_count","last_attempt_at","updated_at"])
+    plan.status="approved"; plan.approved_at=timezone.now()
+    plan.save(update_fields=["status","approved_at","updated_at"])
     existing=Outreach.objects.filter(lead=plan.lead,medium=plan.channel,message=plan.message,status__in=["draft","approved","opened"]).order_by("-created_at").first()
     if not existing:
         Outreach.objects.create(lead=plan.lead,channel=plan.channel,medium=plan.channel,
