@@ -55,6 +55,8 @@ def classify_reply(reply):
     return json.loads(response.output_text)
 
 def send_email(outreach):
+    if outreach.medium != "email":
+        raise ValueError("This outreach uses a manual platform action. Open its destination and submit it there.")
     if outreach.status!="approved":
         raise ValueError("Only approved outreach can be sent.")
     lead=outreach.lead
