@@ -26,6 +26,7 @@ updateMeeting:(id,data)=>request("/meetings/"+id+"/",{method:"PATCH",body:JSON.s
 learning:()=>request("/learning/"),
 refreshLearning:()=>request("/learning/refresh/",{method:"POST"}),
 acquisitionQueue:()=>request("/acquisition/queue/"),acquisitionNextActions:()=>request("/acquisition/next-actions/"),recalculateAcquisition:()=>request("/acquisition/recalculate/",{method:"POST"}),acquisitionAction:(id,data)=>request("/acquisition/"+id+"/action/",{method:"POST",body:JSON.stringify(data)}),
+outreachStrategy:()=>request("/outreach/strategy/"),createOutreachPlan:data=>request("/outreach/plans/",{method:"POST",body:JSON.stringify(data)}),approveOutreachPlan:id=>request("/outreach/plans/"+id+"/approve/",{method:"POST"}),
 syncClients:()=>request("/clients/sync/",{method:"POST"}),
 discoveryProfiles:()=>request("/discovery/profiles/"),
  leads:(page=1)=>request("/leads/?page="+page+"&page_size=50"),
