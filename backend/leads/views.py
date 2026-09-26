@@ -308,9 +308,19 @@ def analytics(request):
 def send_followup(request,pk):
     try: followup=FollowUp.objects.select_related("lead").get(pk=pk)
     except FollowUp.DoesNotExist: return Response({"detail":"Follow-up not found."},status=404)
-    try: return Response(send_followup_email(followup))
-    except ValueError as exc: return Response({"detail":str(exc),"sent":False},status=400)
+    claimed=FollowUp.objects.filter(pk=pk,status="due").update(status="sending")
+    if not claimed:
+        return Response({"detail":"Follow-up is not due or is already being/sent."},status=409)
+    followup.refresh_from_db()
+    try:
+        followup.status="due"
+        result=send_followup_email(followup)
+        return Response(result)
+    except ValueError as exc:
+        followup.status="due"; followup.save(update_fields=["status"])
+        return Response({"detail":str(exc),"sent":False},status=400)
     except Exception as exc:
+        followup.status="due"; followup.save(update_fields=["status"])
         ActivityLog.objects.create(lead=followup.lead,event_type="followup.error",message="Configured follow-up provider failed.",metadata={"followup_id":followup.id,"error":str(exc)})
         return Response({"detail":"Outbound provider failed.","sent":False},status=502)
 
