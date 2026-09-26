@@ -3,7 +3,8 @@ services:
     name: ai-freelance-client-agent-api
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt && python manage.py migrate
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: python manage.py migrate
     startCommand: gunicorn config.wsgi:application
     healthCheckPath: /api/health/
     envVars:
@@ -77,6 +78,24 @@ services:
         value: "180"
       - key: FOLLOWUP_WORKER_INTERVAL
         value: "60"
+      - key: ACQUISITION_AUTOMATION_MODE
+        value: approval_required
+      - key: REVENUE_DEFAULT_CURRENCY
+        value: USD
+      - key: OUTREACH_MAX_ATTEMPTS_PER_LEAD
+        value: "3"
+      - key: OUTREACH_MIN_DELAY_HOURS
+        value: "48"
+      - key: DISCOVERY_SEARCH_UNIT_COST
+        value: "0"
+      - key: CRAWLER_UNIT_COST
+        value: "0"
+      - key: AI_INPUT_COST_PER_1K
+        value: "0"
+      - key: AI_OUTPUT_COST_PER_1K
+        value: "0"
+      - key: OUTREACH_UNIT_COST
+        value: "0"
       - key: SECURE_SSL_REDIRECT
         value: "true"
 
@@ -84,7 +103,7 @@ services:
     name: ai-freelance-client-agent-discovery
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt && python manage.py migrate
+    buildCommand: pip install -r requirements.txt
     startCommand: python manage.py run_discovery_cycle --loop
     envVars:
       - key: DJANGO_SECRET_KEY
@@ -164,7 +183,7 @@ services:
     name: ai-freelance-client-agent-followups
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt && python manage.py migrate
+    buildCommand: pip install -r requirements.txt
     startCommand: python manage.py process_due_followups --loop
     envVars:
       - key: DJANGO_SECRET_KEY
