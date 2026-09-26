@@ -35,7 +35,9 @@ def next_action(lead):
             return {"action":"await_meeting","reason":"meeting already in progress"}
         return {"action":"book_meeting","reason":"reply received"}
     action,category=STAGE_ACTIONS.get(lead.status,("review","manual_review"))
-    if lead.status=="proposal" and lead.proposals.filter(status="approved").exists(): action="plan_outreach"; category="outreach"
+    if lead.status=="proposal" and lead.proposals.filter(status="approved").exists():
+        if lead.outreach_plans.filter(status__in=["draft","approved"]).exists(): action="review"; category="manual_review"
+        else: action="plan_outreach"; category="outreach"
     if lead.status=="new" and getattr(lead,"analysis",None): action="qualify"
     return {"action":action,"category":category}
 
