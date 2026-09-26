@@ -1,7 +1,7 @@
 import React,{useEffect,useState} from "react";
 import {api} from "./api";
 
-export default function AcquisitionIntelligence(){
+export default function AcquisitionIntelligence({demoMode=false}){
   const [analytics,setAnalytics]=useState(null),[clients,setClients]=useState([]),[meetings,setMeetings]=useState([]),[learning,setLearning]=useState([]),[loading,setLoading]=useState(false),[error,setError]=useState("");
   async function load(){
     setLoading(true);setError("");
@@ -13,7 +13,7 @@ export default function AcquisitionIntelligence(){
   useEffect(()=>{if(import.meta.env.VITE_PUBLIC_PREVIEW!=="false")return;load()},[]);
   async function refreshLearning(){setLoading(true);try{const d=await api.refreshLearning();setLearning(d.stats||[]);const a=await api.analytics();setAnalytics(a)}catch(e){setError(e.message)}finally{setLoading(false)}}
   return <section className="panel" style={{marginTop:20}}>
-    <div className="panel-head"><div><div className="eyebrow">PHASES 11–15</div><h2>Client Intelligence & Acquisition Learning</h2></div><button className="secondary" onClick={load} disabled={loading}>{loading?"Refreshing…":"Refresh"}</button></div>
+    <div className="panel-head"><div><div className="eyebrow">PHASES 11–15</div><h2>Client Intelligence & Acquisition Learning</h2></div><button className="secondary" onClick={load} disabled={demoMode||loading}>{loading?"Refreshing…":"Refresh"}</button></div>
     {error&&<div className="error">{error}</div>}
     {analytics&&<div className="metrics">
       {Object.entries(analytics.funnel||{}).slice(0,8).map(([k,v])=><article className="metric" key={k}><span>{k.replaceAll("_"," ")}</span><strong>{v}</strong></article>)}
@@ -29,7 +29,7 @@ export default function AcquisitionIntelligence(){
       </div>
     </div>
     <div className="card" style={{marginTop:16}}>
-      <div className="card-head"><div><div className="eyebrow">PHASE 15 · CLOSED LOOP</div><h3>Outcome learning</h3></div><button onClick={refreshLearning} disabled={loading}>Recalculate learning</button></div>
+      <div className="card-head"><div><div className="eyebrow">PHASE 15 · CLOSED LOOP</div><h3>Outcome learning</h3></div><button onClick={refreshLearning} disabled={demoMode||loading}>Recalculate learning</button></div>
       {!learning.length?<div className="empty">Learning stats will appear after opportunities have outcomes.</div>:<div className="table-wrap"><table><thead><tr><th>Dimension</th><th>Key</th><th>Attempts</th><th>Qualified</th><th>Replies</th><th>Meetings</th><th>Wins</th><th>Reward</th></tr></thead><tbody>{learning.slice(0,25).map(x=><tr key={x.id}><td>{x.dimension}</td><td>{x.key}</td><td>{x.attempts}</td><td>{x.qualified}</td><td>{x.replies}</td><td>{x.meetings}</td><td>{x.wins}</td><td>{Number(x.reward||0).toFixed(1)}</td></tr>)}</tbody></table></div>}
     </div>
   </section>
