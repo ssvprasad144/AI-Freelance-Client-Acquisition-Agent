@@ -148,5 +148,18 @@ class LeadViewSet(viewsets.ModelViewSet):
 def dashboard(request):
     now=timezone.now()
     active=Lead.objects.exclude(status="archived").filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now))
-    return JsonResponse({"opportunities":active.count(),"qualified":Lead.objects.filter(status="qualified").count(),"proposals":Lead.objects.filter(status="proposal").count(),"replies":Lead.objects.filter(status="replied").count(),"high_match":LeadAnalysis.objects.filter(match_score__gte=80).count(),"followups_pending":FollowUp.objects.filter(status="draft").count(),"followups_upcoming":FollowUp.objects.filter(status="approved",scheduled_at__gt=now).count(),"followups_due":FollowUp.objects.filter(status="due").count()})
+    last_discovery=ActivityLog.objects.filter(event_type="discovery.completed").order_by("-created_at").first()
+    last_result=last_discovery.metadata if last_discovery else None
+    return JsonResponse({
+        "opportunities":active.count(),
+        "qualified":Lead.objects.filter(status="qualified").count(),
+        "proposals":Lead.objects.filter(status="proposal").count(),
+        "replies":Lead.objects.filter(status="replied").count(),
+        "high_match":LeadAnalysis.objects.filter(match_score__gte=80).count(),
+        "followups_pending":FollowUp.objects.filter(status="draft").count(),
+        "followups_upcoming":FollowUp.objects.filter(status="approved",scheduled_at__gt=now).count(),
+        "followups_due":FollowUp.objects.filter(status="due").count(),
+        "last_discovery_at":last_discovery.created_at if last_discovery else None,
+        "last_discovery":last_result,
+    })
 def activity(request): return JsonResponse({"items":ActivityLogSerializer(ActivityLog.objects.all()[:50],many=True).data})
