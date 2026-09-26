@@ -12,7 +12,9 @@ function Login({onLogin}){
 }
 
 function App(){
- const params=new URLSearchParams(window.location.search);\n const liveMode=params.get("mode")==="live";\n const demoMode=import.meta.env.VITE_PUBLIC_PREVIEW!=="false"&&!liveMode;
+ const params=new URLSearchParams(window.location.search);
+ const liveMode=params.get("mode")==="live";
+ const demoMode=import.meta.env.VITE_PUBLIC_PREVIEW!=="false"&&!liveMode;
  const demoLeads=[{id:"demo-1",title:"AI workflow automation for SaaS operations",company:"Demo Client Co.",source:"Demo preview",lead_type:"freelance",description:"Build an AI-powered workflow automation system integrating React, Django and OpenAI.",budget_text:"$1,500–$3,000",technologies:["React","Django","OpenAI"],status:"qualified",analysis:{match_score:92,confidence:91}},{id:"demo-2",title:"Django + React dashboard modernization",company:"Example Labs",source:"Demo preview",lead_type:"freelance",description:"Modernize an existing business dashboard and add automation features.",budget_text:"$2,000–$4,000",technologies:["Django","React","PostgreSQL"],status:"new",analysis:{match_score:84,confidence:87}},{id:"demo-3",title:"AI client acquisition prototype",company:"Startup Demo",source:"Demo preview",lead_type:"freelance",description:"Prototype a lead discovery, qualification and proposal workflow.",budget_text:"$1,000–$2,500",technologies:["Python","OpenAI","APIs"],status:"proposal",analysis:{match_score:78,confidence:83}}];
  const [dashboard,setDashboard]=useState(demoMode?{opportunities:3,qualified:1,high_match:2,proposals:1,followups_due:0,last_discovery_at:null}:{}),[analytics,setAnalytics]=useState(null),[leads,setLeads]=useState(demoMode?demoLeads:[]),[qualified,setQualified]=useState([]),[followups,setFollowups]=useState([]),[dueFollowups,setDueFollowups]=useState([]);
  const [followupDate,setFollowupDate]=useState(""),[followupMessage,setFollowupMessage]=useState(""),[replyMessage,setReplyMessage]=useState("");
