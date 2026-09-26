@@ -5,6 +5,7 @@ from .models import Lead, RevenueRecord
 from .revenue_intelligence import upsert_revenue, expected_value
 
 class Phase18Tests(TestCase):
+    """Post-merge verification marker."""
     def setUp(self):
         self.api=APIClient(); user=get_user_model().objects.create_user(username="p18",password="pass123"); self.api.force_authenticate(user)
         self.lead=Lead.objects.create(title="AI build",description="Build AI",source="direct",discovery_strategy="direct-web",status="qualified")
