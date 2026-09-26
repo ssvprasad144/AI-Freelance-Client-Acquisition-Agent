@@ -112,7 +112,7 @@ class PublicCrawlerSafetyTests(TestCase):
         with self.assertRaises(CrawlError): _validate_url("https://user:password@example.com/jobs")
 
     @patch("leads.discovery.live_provider.OpenAI")
-    def test_live_discovery_enriches_search_results(self,client,enrich):
+    def test_live_discovery_returns_search_results_without_crawling(self,client):
         response=client.return_value.responses.create.return_value
         response.output_text='{"leads":[{"title":"Django role","company":"Example","description":"Build Django app","source":"web_search","source_url":"https://example.com/jobs/1","lead_type":"freelance","budget_text":"","technologies":["Django"],"contact_info":{}}]}'
         from .discovery.live_provider import discover_live
