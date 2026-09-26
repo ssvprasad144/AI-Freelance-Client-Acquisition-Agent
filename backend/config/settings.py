@@ -41,6 +41,13 @@ DISCOVERY_SEARCH_CONTEXT_SIZE=os.getenv("DISCOVERY_SEARCH_CONTEXT_SIZE","medium"
 DEFAULT_DISCOVERY_QUERY=os.getenv("DEFAULT_DISCOVERY_QUERY","Find current freelance opportunities matching AI products, business automation, Django/React full-stack development, and Three.js interactive web development")
 QUALIFICATION_MIN_SCORE=int(os.getenv("QUALIFICATION_MIN_SCORE","60"))
 FOLLOWUP_WORKER_INTERVAL=int(os.getenv("FOLLOWUP_WORKER_INTERVAL","60"))
+OUTREACH_ENABLED=os.getenv("OUTREACH_ENABLED","false").lower()=="true"
+OUTREACH_FROM_EMAIL=os.getenv("OUTREACH_FROM_EMAIL","")
+SMTP_HOST=os.getenv("SMTP_HOST","")
+SMTP_PORT=int(os.getenv("SMTP_PORT","587"))
+SMTP_USERNAME=os.getenv("SMTP_USERNAME","")
+SMTP_PASSWORD=os.getenv("SMTP_PASSWORD","")
+SMTP_USE_TLS=os.getenv("SMTP_USE_TLS","true").lower()=="true"
 DISCOVERY_WORKER_INTERVAL=int(os.getenv("DISCOVERY_WORKER_INTERVAL","3600"))
 MOCK_LEADS_FILE=BASE_DIR/"leads"/"data"/"mock_freelance_leads_100.json"
 
