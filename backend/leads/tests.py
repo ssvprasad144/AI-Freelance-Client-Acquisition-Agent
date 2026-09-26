@@ -102,38 +102,24 @@ class SearchLearningTests(APITestBase):
 
 
 class AdaptiveSearchSelectionTests(TestCase):
-    def _stat(self, profile_id, qualified, created=0, strategy_id="general-web"):
-        return DiscoverySearchStat.objects.create(profile_id=profile_id,strategy_id=strategy_id,query=profile_id,normalized_query=profile_id,source="web_search",search_date=timezone.localdate(),qualified=qualified,newly_created_leads=created)
+    def _stat(self, profile_id, strategy_id, qualified, created=0):
+        return DiscoverySearchStat.objects.create(profile_id=profile_id,strategy_id=strategy_id,query=f"{profile_id}-{strategy_id}",normalized_query=f"{profile_id}-{strategy_id}",source="web_search",search_date=timezone.localdate(),qualified=qualified,newly_created_leads=created)
 
-    def test_exploration_covers_under_sampled_profiles(self):
+    def test_exploration_covers_under_sampled_arms(self):
         from .discovery.profiles import select_profile
-        self._stat("ai-automation", qualified=5, created=8)
+        self._stat("ai-automation","community",5,8)
         selected=select_profile(72,only_if_due=False)
-        self.assertIn(selected["id"],["django-fullstack","interactive-web","startup-build"])
+        self.assertNotEqual((selected["id"],selected["strategy_id"]),("ai-automation","community"))
 
-    def test_exploitation_prefers_higher_measured_yield(self):
+    def test_exploitation_prefers_high_yield_arm_after_exploration(self):
         from .discovery.profiles import select_profile
-        for pid in ["ai-automation","django-fullstack","interactive-web","startup-build"]:
-            self._stat(pid,qualified=1,created=2)
-            self._stat(pid,qualified=1,created=2)
-        self._stat("ai-automation",qualified=8,created=10)
+        profiles=["ai-automation","django-fullstack","interactive-web","startup-build"]
+        strategies=["marketplace","community","startup-hiring","direct-web"]
+        for pid in profiles:
+            for sid in strategies:
+                self._stat(pid,sid,1,2)
+                self._stat(pid,sid,1,2)
+        self._stat("ai-automation","community",8,10)
         selected=select_profile(72,only_if_due=False)
-        self.assertEqual(selected["id"],"ai-automation")
+        self.assertEqual((selected["id"],selected["strategy_id"]),("ai-automation","community"))
 
-
-class StrategyLearningTests(TestCase):
-    def _stat(self, strategy_id, qualified, created=0):
-        return DiscoverySearchStat.objects.create(profile_id="ai-automation",strategy_id=strategy_id,query=strategy_id,normalized_query=strategy_id,source="web_search",search_date=timezone.localdate(),qualified=qualified,newly_created_leads=created)
-
-    def test_strategy_exploration(self):
-        from .discovery.profiles import select_strategy
-        self._stat("marketplace",5,8)
-        selected=select_strategy()
-        self.assertIn(selected["id"],["community","startup-hiring","direct-web"])
-
-    def test_strategy_exploitation(self):
-        from .discovery.profiles import select_strategy
-        for sid in ["marketplace","community","startup-hiring","direct-web"]:
-            self._stat(sid,1,2); self._stat(sid,1,2)
-        self._stat("marketplace",8,10)
-        self.assertEqual(select_strategy()["id"],"marketplace")
