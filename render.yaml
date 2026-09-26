@@ -255,6 +255,180 @@ services:
       - key: SECURE_SSL_REDIRECT
         value: "true"
 
+  - type: cron
+    name: ai-freelance-client-agent-discovery-cron
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && python manage.py check --deploy
+    preDeployCommand: python manage.py migrate
+    schedule: '0 */6 * * *'
+    startCommand: python manage.py run_discovery_cycle
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: DATABASE_SSL_REQUIRE
+        value: "true"
+      - key: DEBUG
+        value: "false"
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: DISCOVERY_MODEL
+        value: gpt-4o-mini
+      - key: DISCOVERY_WORKER_INTERVAL
+        value: "21600"
+      - key: DISCOVERY_QUERY_CACHE_TTL_HOURS
+        value: "72"
+      - key: DISCOVERY_MAX_SEARCHES_PER_DAY
+        value: "4"
+      - key: DISCOVERY_TARGET_QUALIFIED_LEADS
+        value: "10"
+      - key: DISCOVERY_MIN_EXPLORATION_SEARCHES
+        value: "2"
+      - key: DISCOVERY_LEARNING_LOOKBACK_DAYS
+        value: "30"
+      - key: DISCOVERY_QUERY_VARIANT_MIN_SEARCHES
+        value: "2"
+      - key: DISCOVERY_MAX_EXCLUDED_DOMAINS
+        value: "8"
+      - key: DISCOVERY_LOW_YIELD_THRESHOLD
+        value: "0.5"
+      - key: DISCOVERY_SEARCH_CONTEXT_FALLBACK
+        value: "true"
+      - key: DISCOVERY_PREFERRED_HOURS_ENABLED
+        value: "true"
+      - key: DISCOVERY_PREFERRED_HOUR_START
+        value: "8"
+      - key: DISCOVERY_PREFERRED_HOUR_END
+        value: "22"
+      - key: DISCOVERY_SEMANTIC_REUSE_THRESHOLD
+        value: "0.62"
+      - key: DISCOVERY_FRESHNESS_HOURS
+        value: "48"
+      - key: DISCOVERY_DOMAIN_MIN_RESULTS
+        value: "8"
+      - key: DISCOVERY_DOMAIN_BLOCK_QUALIFIED_RATE
+        value: "0.05"
+      - key: CRAWLER_MAX_LEADS_PER_CYCLE
+        value: "5"
+      - key: LOCAL_PREFILTER_MIN_SCORE
+        value: "40"
+      - key: CRAWLER_MIN_LEAD_SCORE
+        value: "40"
+      - key: AI_QUALIFICATION_MAX_LEADS_PER_CYCLE
+        value: "8"
+      - key: AI_MAX_LEAD_DESCRIPTION_CHARS
+        value: "6000"
+      - key: AI_MAX_REPLY_CHARS
+        value: "5000"
+      - key: AI_QUALIFICATION_MAX_OUTPUT_TOKENS
+        value: "450"
+      - key: AI_PROPOSAL_MAX_OUTPUT_TOKENS
+        value: "350"
+      - key: AI_REPLY_MAX_OUTPUT_TOKENS
+        value: "180"
+      - key: FOLLOWUP_WORKER_INTERVAL
+        value: "60"
+      - key: SECURE_SSL_REDIRECT
+        value: "true"
+
+
+  - type: cron
+    name: ai-freelance-client-agent-followups-cron
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && python manage.py check --deploy
+    preDeployCommand: python manage.py migrate
+    schedule: '*/30 * * * *'
+    startCommand: python manage.py process_due_followups
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: DATABASE_SSL_REQUIRE
+        value: "true"
+      - key: DEBUG
+        value: "false"
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: DISCOVERY_MODEL
+        value: gpt-4o-mini
+      - key: DISCOVERY_WORKER_INTERVAL
+        value: "21600"
+      - key: DISCOVERY_QUERY_CACHE_TTL_HOURS
+        value: "72"
+      - key: DISCOVERY_MAX_SEARCHES_PER_DAY
+        value: "4"
+      - key: DISCOVERY_TARGET_QUALIFIED_LEADS
+        value: "10"
+      - key: DISCOVERY_MIN_EXPLORATION_SEARCHES
+        value: "2"
+      - key: DISCOVERY_LEARNING_LOOKBACK_DAYS
+        value: "30"
+      - key: DISCOVERY_QUERY_VARIANT_MIN_SEARCHES
+        value: "2"
+      - key: DISCOVERY_MAX_EXCLUDED_DOMAINS
+        value: "8"
+      - key: DISCOVERY_LOW_YIELD_THRESHOLD
+        value: "0.5"
+      - key: DISCOVERY_SEARCH_CONTEXT_FALLBACK
+        value: "true"
+      - key: DISCOVERY_PREFERRED_HOURS_ENABLED
+        value: "true"
+      - key: DISCOVERY_PREFERRED_HOUR_START
+        value: "8"
+      - key: DISCOVERY_PREFERRED_HOUR_END
+        value: "22"
+      - key: DISCOVERY_SEMANTIC_REUSE_THRESHOLD
+        value: "0.62"
+      - key: DISCOVERY_FRESHNESS_HOURS
+        value: "48"
+      - key: DISCOVERY_DOMAIN_MIN_RESULTS
+        value: "8"
+      - key: DISCOVERY_DOMAIN_BLOCK_QUALIFIED_RATE
+        value: "0.05"
+      - key: CRAWLER_MAX_LEADS_PER_CYCLE
+        value: "5"
+      - key: LOCAL_PREFILTER_MIN_SCORE
+        value: "40"
+      - key: CRAWLER_MIN_LEAD_SCORE
+        value: "40"
+      - key: AI_QUALIFICATION_MAX_LEADS_PER_CYCLE
+        value: "8"
+      - key: AI_MAX_LEAD_DESCRIPTION_CHARS
+        value: "6000"
+      - key: AI_MAX_REPLY_CHARS
+        value: "5000"
+      - key: AI_QUALIFICATION_MAX_OUTPUT_TOKENS
+        value: "450"
+      - key: AI_PROPOSAL_MAX_OUTPUT_TOKENS
+        value: "350"
+      - key: AI_REPLY_MAX_OUTPUT_TOKENS
+        value: "180"
+      - key: FOLLOWUP_WORKER_INTERVAL
+        value: "60"
+      - key: SECURE_SSL_REDIRECT
+        value: "true"
+
+
   - type: web
     name: ai-freelance-client-agent-frontend
     runtime: static
