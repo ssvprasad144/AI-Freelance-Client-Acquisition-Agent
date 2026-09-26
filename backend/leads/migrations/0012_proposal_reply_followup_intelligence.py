@@ -48,6 +48,7 @@ class Migration(migrations.Migration):
                 ("stop_on_reply", models.BooleanField(default=True)),
                 ("stop_on_terminal_status", models.BooleanField(default=True)),
                 ("current_step", models.PositiveSmallIntegerField(default=0)),
+                ("delays_days", models.JSONField(blank=True, default=list)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 ("lead", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="followup_sequences", to="leads.lead")),
