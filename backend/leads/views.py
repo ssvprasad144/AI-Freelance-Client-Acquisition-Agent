@@ -16,6 +16,7 @@ from .discovery.live_provider import LiveDiscoveryError
 from .discovery.mock_provider import DiscoveryError
 from .discovery.service import DiscoveryService
 from .discovery.profiles import public_profiles
+from .discovery_cycle import run_discovery_cycle
 from .lead_optimizer import local_lead_score, should_ai_qualify, ai_skip_analysis
 from .followup_service import process_due_followups as process_due_followups_service
 from .acquisition import classify_reply, send_email, send_followup as send_followup_email
@@ -121,12 +122,13 @@ def approve_followup(request,pk):
 @api_view(["POST"])
 @throttle_classes([DiscoveryThrottle])
 def run_discovery(request):
-    query=str(request.data.get("query") or settings.DEFAULT_DISCOVERY_QUERY).strip(); source=str(request.data.get("source") or "live").lower()
-    try:result=DiscoveryService().discover(query,source)
-    except (LiveDiscoveryError,DiscoveryError) as exc:return Response({"status":"error","detail":str(exc)},status=502)
-    items=result.get("leads",[]); created,duplicates,invalid=_store(items)
-    payload={"query":query,"source":result.get("source",source),"discovered":len(items),"created":created,"duplicates":duplicates,"invalid":invalid,"model":result.get("model","unknown")}
-    ActivityLog.objects.create(event_type="discovery.completed",message=f"Discovery completed from {payload['source']}.",metadata=payload)
+    query=str(request.data.get("query") or settings.DEFAULT_DISCOVERY_QUERY).strip()
+    source=str(request.data.get("source") or "live").lower()
+    limit=min(max(int(request.data.get("limit",settings.DISCOVERY_MAX_RESULTS)),1),settings.DISCOVERY_MAX_RESULTS)
+    try:
+        payload=run_discovery_cycle(query=query,source=source,qualification_limit=limit,profile_id="manual")
+    except (LiveDiscoveryError,DiscoveryError) as exc:
+        return Response({"status":"error","detail":str(exc)},status=502)
     return Response({"status":"success",**payload})
 
 @api_view(["GET"])
