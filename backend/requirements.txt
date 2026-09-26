@@ -5,3 +5,4 @@ python-dotenv>=1.0,<2.0
 openai>=1.68,<2.0
 dj-database-url>=2.2,<3.0
 psycopg[binary]>=3.2,<4.0
+gunicorn>=23.0,<24.0
