@@ -1,13 +1,12 @@
 import time
 from django.conf import settings
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
 from leads.discovery_cycle import run_discovery_cycle
 from leads.models import ActivityLog
 
 class Command(BaseCommand):
-    help="Run one optimized live freelance discovery cycle or keep the worker running."
+    help="Run one optimized live freelance discovery cycle; use --loop only for local/worker execution."
 
     def add_arguments(self,parser):
         parser.add_argument("--query",default=None)
