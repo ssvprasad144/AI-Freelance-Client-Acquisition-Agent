@@ -28,6 +28,19 @@ from .meeting_service import sync_meeting_context, apply_meeting_status
 from .learning import log_acquisition_event, refresh_learning
 from .acquisition_orchestrator import build_queue, ensure_opportunity, execute_action, recalculate_opportunities
 from .outreach_intelligence import build_outreach_plans, create_plan, channel_metrics, mark_approved
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def health(request):
+    from django.db import connection
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+        return Response({"status":"healthy","database":"ok"})
+    except Exception:
+        return Response({"status":"unhealthy","database":"error"},status=503)
 from .revenue_intelligence import upsert_revenue, revenue_metrics, optimization_report
 from .analytics import acquisition_metrics
 from .models import ActivityLog, FollowUp, FollowUpSequence, Lead, LeadAnalysis, Outreach, Proposal, Reply, Client, Contact, Conversation, Meeting, AcquisitionEvent, LearningStat, AcquisitionOpportunity, OutreachPlan, RevenueRecord
