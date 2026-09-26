@@ -3,6 +3,7 @@ from typing import Any
 from django.conf import settings
 from openai import OpenAI
 from .knowledge import PROFILE
+from .acquisition import personalize_proposal
 
 SYSTEM_PROMPT="""You are a careful freelance lead qualification assistant.
 Analyze a lead against the supplied developer profile.
@@ -38,6 +39,8 @@ def analyze_lead(lead)->dict[str,Any]:
 
 def generate_proposal(lead,analysis)->str:
     if not settings.OPENAI_API_KEY:
+        parts=personalize_proposal(lead,analysis)
+        return "\n\n".join([parts["opening"],parts["fit"],parts["evidence"],parts["approach"],parts["next_step"],parts["closing"]])
         projects=", ".join(analysis.matching_projects or [])
         return f"Hi,\n\nI came across your request for {lead.title}. I work across {analysis.service_match or 'full-stack and AI development'} and can help structure the work around the requirements you listed. Relevant project evidence: {projects or 'available projects in my portfolio'}.\n\nI would first confirm the scope, current stack, integrations, and delivery target, then propose a focused implementation plan.\n\nRegards,\nSSVPrasad"
     client=OpenAI(api_key=settings.OPENAI_API_KEY)
