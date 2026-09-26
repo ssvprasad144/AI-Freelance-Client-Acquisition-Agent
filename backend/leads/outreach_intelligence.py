@@ -1,4 +1,5 @@
-from django.utils import timezone\nfrom django.conf import settings
+from django.utils import timezone
+from django.conf import settings
 from .models import Lead, OutreachPlan, Outreach
 
 CHANNELS={"email":{"automatic":True,"action":"send_email"},"linkedin":{"automatic":False,"action":"manual_submit"},"marketplace":{"automatic":False,"action":"manual_submit"},"contact_form":{"automatic":False,"action":"manual_submit"},"community":{"automatic":False,"action":"manual_submit"}}
@@ -21,7 +22,9 @@ def personalized_message(lead,channel,variant="A"):
     if variant=="B": value=f"Your {lead.title.lower()} looks like a strong fit for an AI-assisted implementation."
     if approach:value+=f" {approach[:220]}"
     if style and "concise" in style.lower(): ask=" Open to a short discussion this week?"
-    return "\n\n".join([intro,value+proof,ask])
+    return "
+
+".join([intro,value+proof,ask])
 
 def create_plan(lead,channel=None,variant="A"):
     if not eligible(lead): raise ValueError("Outreach is blocked because this lead has replied, has a meeting, or is terminal.")
