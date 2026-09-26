@@ -39,7 +39,12 @@ def select_profile(ttl_hours,only_if_due=True,strategy_id=None):
         q=_strategy_query(p,strategy); cache=DiscoveryQueryCache.objects.filter(profile_id=p["id"],normalized_query=normalize_query(q)).first(); searched=cache.searched_at if cache else None
         if only_if_due and searched and searched>stale: continue
         eligible.append((searched or datetime.min.replace(tzinfo=now.tzinfo),p,q))
-    when,p,q=min(eligible,key=lambda x:x[0]) if eligible else (datetime.min.replace(tzinfo=now.tzinfo),DISCOVERY_PROFILES[0],_strategy_query(DISCOVERY_PROFILES[0],strategy))
+    if not eligible:
+        candidates=[(DiscoveryQueryCache.objects.filter(profile_id=p["id"],normalized_query=normalize_query(_strategy_query(p,strategy))).values_list("searched_at",flat=True).first() or datetime.min.replace(tzinfo=now.tzinfo),p,_strategy_query(p,strategy)) for p in DISCOVERY_PROFILES]
+        _,p,q=min(candidates,key=lambda x:x[0])
+    else:
+        _,p,q=min(eligible,key=lambda x:x[0])
     return {**p,"strategy_id":strategy_id,"query":q}
 def profile_performance(lookback_days=None): return [{"profile":p,"strategies":[{"strategy":s,"performance":_score(s["id"],lookback_days)} for s in STRATEGIES]} for p in DISCOVERY_PROFILES]
+def strategy_performance(lookback_days=None): return [{"strategy":s,"performance":_score(s["id"],lookback_days)} for s in STRATEGIES]
 def public_profiles(): return [{**p,"strategies":STRATEGIES} for p in DISCOVERY_PROFILES]
