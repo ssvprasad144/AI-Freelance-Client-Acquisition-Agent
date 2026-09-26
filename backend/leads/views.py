@@ -64,7 +64,8 @@ def _store(items):
 
 @api_view(["POST"])
 @throttle_classes([AIThrottle])
-def qualify_new_leads(request): limit=min(max(int(request.data.get("limit",20)),1),50)
+def qualify_new_leads(request):
+    limit=min(max(int(request.data.get("limit",20)),1),50)
     leads=list(Lead.objects.filter(status="new",analysis__isnull=True).order_by("-discovered_at","-created_at")[:limit]); qualified=0
     for lead in leads:
         data=analyze_lead(lead); analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data)
@@ -108,7 +109,8 @@ def approve_followup(request,pk):
 
 @api_view(["POST"])
 @throttle_classes([DiscoveryThrottle])
-def run_discovery(request): query=str(request.data.get("query") or settings.DEFAULT_DISCOVERY_QUERY).strip(); source=str(request.data.get("source") or "live").lower()
+def run_discovery(request):
+    query=str(request.data.get("query") or settings.DEFAULT_DISCOVERY_QUERY).strip(); source=str(request.data.get("source") or "live").lower()
     try:result=DiscoveryService().discover(query,source)
     except (LiveDiscoveryError,DiscoveryError) as exc:return Response({"status":"error","detail":str(exc)},status=502)
     items=result.get("leads",[]); created,duplicates,invalid=_store(items)
@@ -133,12 +135,14 @@ def create_reply(request,pk):
 class LeadViewSet(viewsets.ModelViewSet):
     queryset=Lead.objects.all().prefetch_related("analysis"); serializer_class=LeadSerializer
     @action(detail=True,methods=["post"],throttle_classes=[AIThrottle])
-    def analyze(self,request,pk=None): lead=self.get_object(); data=analyze_lead(lead); analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data)
+    def analyze(self,request,pk=None):
+        lead=self.get_object(); data=analyze_lead(lead); analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data)
         if analysis.relevant and analysis.match_score>=settings.QUALIFICATION_MIN_SCORE and lead.status=="new":lead.status="qualified"; lead.save(update_fields=["status","updated_at"])
         ActivityLog.objects.create(lead=lead,event_type="lead.analyzed",message=f"Lead analyzed with score {analysis.match_score}.",metadata={"model":analysis.model,"match_score":analysis.match_score})
         return Response(LeadSerializer(lead).data)
     @action(detail=True,methods=["post"],throttle_classes=[AIThrottle])
-    def proposal(self,request,pk=None): lead=self.get_object(); analysis=getattr(lead,"analysis",None)
+    def proposal(self,request,pk=None):
+        lead=self.get_object(); analysis=getattr(lead,"analysis",None)
         if not analysis:return Response({"detail":"Analyze the lead first."},status=400)
         message=generate_proposal(lead,analysis); outreach=Outreach.objects.create(lead=lead,channel="email",message=message,status="draft"); lead.status="proposal"; lead.save(update_fields=["status","updated_at"])
         ActivityLog.objects.create(lead=lead,event_type="proposal.generated",message="Proposal draft generated. No message was sent.",metadata={"outreach_id":outreach.id})
