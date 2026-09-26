@@ -1,8 +1,12 @@
 import json
+import logging
 from typing import Any
 
 from django.conf import settings
 from openai import OpenAI
+
+
+logger = logging.getLogger(__name__)
 
 
 class LiveDiscoveryError(Exception):
@@ -104,7 +108,16 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
                                 "type": "array",
                                 "items": {"type": "string"},
                             },
-                            "contact_info": {"type": "object"},
+                            "contact_info": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "email": {"type": "string"},
+                                    "phone": {"type": "string"},
+                                },
+                                "required": ["name", "email", "phone"],
+                                "additionalProperties": False,
+                            },
                         },
                         "required": [
                             "title", "company", "description", "source",
@@ -153,6 +166,7 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
     except LiveDiscoveryError:
         raise
     except Exception as exc:
+        logger.exception("Live discovery provider request failed: %s", exc)
         raise LiveDiscoveryError("Live discovery provider request failed.") from exc
 
     leads = payload.get("leads", []) if isinstance(payload, dict) else []
