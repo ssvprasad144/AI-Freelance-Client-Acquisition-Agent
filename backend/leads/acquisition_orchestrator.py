@@ -56,7 +56,8 @@ VALID_ACTIONS={
  "review":{"from":["new","qualified","proposal","contacted","replied"],"to":None},
 }
 
-def execute_action(opportunity,action,mode="approval_required",approved=False):
+def execute_action(opportunity,action,mode=None,approved=False):
+    mode=mode or getattr(settings,"ACQUISITION_AUTOMATION_MODE","approval_required")
     lead=opportunity.lead
     rule=VALID_ACTIONS.get(action)
     if not rule or lead.status not in rule["from"]:
