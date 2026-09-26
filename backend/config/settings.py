@@ -49,6 +49,20 @@ SMTP_USERNAME=os.getenv("SMTP_USERNAME","")
 SMTP_PASSWORD=os.getenv("SMTP_PASSWORD","")
 SMTP_USE_TLS=os.getenv("SMTP_USE_TLS","true").lower()=="true"
 DISCOVERY_WORKER_INTERVAL=int(os.getenv("DISCOVERY_WORKER_INTERVAL","3600"))
+CRAWLER_ENABLED=os.getenv("CRAWLER_ENABLED","true").lower()=="true"
+CRAWLER_USER_AGENT=os.getenv("CRAWLER_USER_AGENT","SSVPrasad-ClientAcquisitionBot/1.0 (+public-web-research)")
+CRAWLER_TIMEOUT_SECONDS=float(os.getenv("CRAWLER_TIMEOUT_SECONDS","8"))
+CRAWLER_MIN_DELAY_SECONDS=float(os.getenv("CRAWLER_MIN_DELAY_SECONDS","2"))
+CRAWLER_MAX_SLEEP_SECONDS=float(os.getenv("CRAWLER_MAX_SLEEP_SECONDS","10"))
+CRAWLER_MAX_PAGES_PER_DOMAIN=int(os.getenv("CRAWLER_MAX_PAGES_PER_DOMAIN","5"))
+CRAWLER_MAX_LEADS_PER_CYCLE=int(os.getenv("CRAWLER_MAX_LEADS_PER_CYCLE","10"))
+CRAWLER_MAX_REDIRECTS=int(os.getenv("CRAWLER_MAX_REDIRECTS","3"))
+CRAWLER_MAX_RESPONSE_BYTES=int(os.getenv("CRAWLER_MAX_RESPONSE_BYTES","2000000"))
+CRAWLER_MAX_ROBOTS_BYTES=int(os.getenv("CRAWLER_MAX_ROBOTS_BYTES","200000"))
+CRAWLER_MAX_TEXT_CHARS=int(os.getenv("CRAWLER_MAX_TEXT_CHARS","12000"))
+CRAWLER_MAX_DESCRIPTION_CHARS=int(os.getenv("CRAWLER_MAX_DESCRIPTION_CHARS","20000"))
+CRAWLER_MAX_LINKS=int(os.getenv("CRAWLER_MAX_LINKS","50"))
+CRAWLER_ALLOW_ROBOTS_FAILURE=os.getenv("CRAWLER_ALLOW_ROBOTS_FAILURE","false").lower()=="true"
 MOCK_LEADS_FILE=BASE_DIR/"leads"/"data"/"mock_freelance_leads_100.json"
 
 FREELANCE_SEARCH_PROFILE={"name":"SSVPrasad","services":["AI Products","Business Automation","Full-Stack Development","Interactive Web"],"skills":["Python","C++","JavaScript","SQL","React","Vite","Three.js","React Three Fiber","Django","Django REST Framework","PostgreSQL","SQLite","OpenAI","webhooks","GitHub","Render","GitHub Pages","Cloudinary","Linux"],"projects":[{"name":"AI Business Automation Dashboard","evidence":"AI workflow demos, execution logging, dashboard and backend APIs."},{"name":"CareerInnTech","evidence":"Django-based career platform with AI interview functionality and PostgreSQL."},{"name":"AI Interview","evidence":"Voice-first AI mock interview experience with Django and frontend integration."},{"name":"3D Motion Portfolio","evidence":"React/Three.js portfolio focused on interactive web experiences."}]}
