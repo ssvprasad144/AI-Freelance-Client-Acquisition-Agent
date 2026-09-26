@@ -118,3 +118,11 @@ def execute_action(opportunity,action,mode="approval_required",approved=False):
     ActivityLog.objects.create(lead=lead,event_type="acquisition.action_executed",message=f"Acquisition action executed: {action}.",metadata={"opportunity_id":opportunity.id,"action":action,"mode":mode})
     return {"executed":True,"requires_approval":False,"action":action,"lead_status":lead.status,"opportunity_id":opportunity.id}
 
+
+
+def recalculate_opportunities():
+    updated=0
+    for lead in Lead.objects.exclude(status__in=TERMINAL).select_related("analysis"):
+        ensure_opportunity(lead)
+        updated += 1
+    return {"updated": updated}
