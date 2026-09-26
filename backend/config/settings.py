@@ -9,81 +9,26 @@ load_dotenv(BASE_DIR.parent / ".env")
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-secret-key")
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 ALLOWED_HOSTS = [x.strip() for x in os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if x.strip()]
-
-INSTALLED_APPS = [
-    "django.contrib.admin", "django.contrib.auth", "django.contrib.contenttypes",
-    "django.contrib.sessions", "django.contrib.messages", "django.contrib.staticfiles",
-    "corsheaders", "rest_framework", "rest_framework.authtoken", "leads",
-]
-MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware", "django.middleware.security.SecurityMiddleware",
-    "django.contrib.sessions.middleware.SessionMiddleware", "django.middleware.common.CommonMiddleware",
-    "django.middleware.csrf.CsrfViewMiddleware", "django.contrib.auth.middleware.AuthenticationMiddleware",
-    "django.contrib.messages.middleware.MessageMiddleware", "django.middleware.clickjacking.XFrameOptionsMiddleware",
-]
-ROOT_URLCONF = "config.urls"
-TEMPLATES = [{"BACKEND":"django.template.backends.django.DjangoTemplates","DIRS":[],"APP_DIRS":True,"OPTIONS":{"context_processors":["django.template.context_processors.request","django.contrib.auth.context_processors.auth","django.contrib.messages.context_processors.messages"]}}]
-WSGI_APPLICATION = "config.wsgi.application"
-
+INSTALLED_APPS=["django.contrib.admin","django.contrib.auth","django.contrib.contenttypes","django.contrib.sessions","django.contrib.messages","django.contrib.staticfiles","corsheaders","rest_framework","rest_framework.authtoken","leads"]
+MIDDLEWARE=["corsheaders.middleware.CorsMiddleware","django.middleware.security.SecurityMiddleware","django.contrib.sessions.middleware.SessionMiddleware","django.middleware.common.CommonMiddleware","django.middleware.csrf.CsrfViewMiddleware","django.contrib.auth.middleware.AuthenticationMiddleware","django.contrib.messages.middleware.MessageMiddleware","django.middleware.clickjacking.XFrameOptionsMiddleware"]
+ROOT_URLCONF="config.urls"; TEMPLATES=[{"BACKEND":"django.template.backends.django.DjangoTemplates","DIRS":[],"APP_DIRS":True,"OPTIONS":{"context_processors":["django.template.context_processors.request","django.contrib.auth.context_processors.auth","django.contrib.messages.context_processors.messages"]}}]; WSGI_APPLICATION="config.wsgi.application"
 if os.getenv("DATABASE_URL"):
     import dj_database_url
-    DATABASES = {"default": dj_database_url.parse(os.environ["DATABASE_URL"], conn_max_age=600, ssl_require=True)}
-else:
-    DATABASES = {"default":{"ENGINE":"django.db.backends.sqlite3","NAME":BASE_DIR/"db.sqlite3"}}
-
-LANGUAGE_CODE="en-us"; TIME_ZONE="Asia/Kolkata"; USE_I18N=True; USE_TZ=True
-STATIC_URL="static/"; DEFAULT_AUTO_FIELD="django.db.models.BigAutoField"
+    DATABASES={"default":dj_database_url.parse(os.environ["DATABASE_URL"],conn_max_age=600,ssl_require=True)}
+else: DATABASES={"default":{"ENGINE":"django.db.backends.sqlite3","NAME":BASE_DIR/"db.sqlite3"}}
+LANGUAGE_CODE="en-us"; TIME_ZONE="Asia/Kolkata"; USE_I18N=True; USE_TZ=True; STATIC_URL="static/"; DEFAULT_AUTO_FIELD="django.db.models.BigAutoField"
 CORS_ALLOWED_ORIGINS=[x.strip() for x in os.getenv("CORS_ALLOWED_ORIGINS","http://localhost:5173").split(",") if x.strip()]
-OPENAI_API_KEY=os.getenv("OPENAI_API_KEY",""); OPENAI_MODEL=os.getenv("OPENAI_MODEL","gpt-4o-mini")
-DISCOVERY_MODEL=os.getenv("DISCOVERY_MODEL","gpt-4o-mini")
-DISCOVERY_MAX_RESULTS=int(os.getenv("DISCOVERY_MAX_RESULTS","20"))
-DISCOVERY_SEARCH_CONTEXT_SIZE=os.getenv("DISCOVERY_SEARCH_CONTEXT_SIZE","medium")
+OPENAI_API_KEY=os.getenv("OPENAI_API_KEY",""); OPENAI_MODEL=os.getenv("OPENAI_MODEL","gpt-4o-mini"); DISCOVERY_MODEL=os.getenv("DISCOVERY_MODEL","gpt-4o-mini")
+DISCOVERY_MAX_RESULTS=int(os.getenv("DISCOVERY_MAX_RESULTS","20")); DISCOVERY_SEARCH_CONTEXT_SIZE=os.getenv("DISCOVERY_SEARCH_CONTEXT_SIZE","low")
 DEFAULT_DISCOVERY_QUERY=os.getenv("DEFAULT_DISCOVERY_QUERY","Find current freelance opportunities matching AI products, business automation, Django/React full-stack development, and Three.js interactive web development")
-QUALIFICATION_MIN_SCORE=int(os.getenv("QUALIFICATION_MIN_SCORE","60"))
+DISCOVERY_QUERY_CACHE_TTL_HOURS=int(os.getenv("DISCOVERY_QUERY_CACHE_TTL_HOURS","36")); DISCOVERY_WORKER_INTERVAL=int(os.getenv("DISCOVERY_WORKER_INTERVAL","21600"))
+QUALIFICATION_MIN_SCORE=int(os.getenv("QUALIFICATION_MIN_SCORE","60")); LOCAL_PREFILTER_MIN_SCORE=int(os.getenv("LOCAL_PREFILTER_MIN_SCORE","20"))
+AI_MAX_LEAD_DESCRIPTION_CHARS=int(os.getenv("AI_MAX_LEAD_DESCRIPTION_CHARS","6000")); AI_MAX_REPLY_CHARS=int(os.getenv("AI_MAX_REPLY_CHARS","5000")); AI_QUALIFICATION_MAX_OUTPUT_TOKENS=int(os.getenv("AI_QUALIFICATION_MAX_OUTPUT_TOKENS","450")); AI_PROPOSAL_MAX_OUTPUT_TOKENS=int(os.getenv("AI_PROPOSAL_MAX_OUTPUT_TOKENS","350")); AI_REPLY_MAX_OUTPUT_TOKENS=int(os.getenv("AI_REPLY_MAX_OUTPUT_TOKENS","180"))
 FOLLOWUP_WORKER_INTERVAL=int(os.getenv("FOLLOWUP_WORKER_INTERVAL","60"))
-OUTREACH_ENABLED=os.getenv("OUTREACH_ENABLED","false").lower()=="true"
-OUTREACH_FROM_EMAIL=os.getenv("OUTREACH_FROM_EMAIL","")
-SMTP_HOST=os.getenv("SMTP_HOST","")
-SMTP_PORT=int(os.getenv("SMTP_PORT","587"))
-SMTP_USERNAME=os.getenv("SMTP_USERNAME","")
-SMTP_PASSWORD=os.getenv("SMTP_PASSWORD","")
-SMTP_USE_TLS=os.getenv("SMTP_USE_TLS","true").lower()=="true"
-DISCOVERY_WORKER_INTERVAL=int(os.getenv("DISCOVERY_WORKER_INTERVAL","21600"))
-LOCAL_PREFILTER_MIN_SCORE=int(os.getenv("LOCAL_PREFILTER_MIN_SCORE","20"))
-AI_MAX_LEAD_DESCRIPTION_CHARS=int(os.getenv("AI_MAX_LEAD_DESCRIPTION_CHARS","6000"))
-AI_MAX_REPLY_CHARS=int(os.getenv("AI_MAX_REPLY_CHARS","5000"))
-AI_QUALIFICATION_MAX_OUTPUT_TOKENS=int(os.getenv("AI_QUALIFICATION_MAX_OUTPUT_TOKENS","450"))
-AI_PROPOSAL_MAX_OUTPUT_TOKENS=int(os.getenv("AI_PROPOSAL_MAX_OUTPUT_TOKENS","350"))
-AI_REPLY_MAX_OUTPUT_TOKENS=int(os.getenv("AI_REPLY_MAX_OUTPUT_TOKENS","180"))
-CRAWLER_ENABLED=os.getenv("CRAWLER_ENABLED","true").lower()=="true"
-CRAWLER_USER_AGENT=os.getenv("CRAWLER_USER_AGENT","SSVPrasad-ClientAcquisitionBot/1.0 (+public-web-research)")
-CRAWLER_TIMEOUT_SECONDS=float(os.getenv("CRAWLER_TIMEOUT_SECONDS","8"))
-CRAWLER_MIN_DELAY_SECONDS=float(os.getenv("CRAWLER_MIN_DELAY_SECONDS","2"))
-CRAWLER_MAX_SLEEP_SECONDS=float(os.getenv("CRAWLER_MAX_SLEEP_SECONDS","10"))
-CRAWLER_MAX_PAGES_PER_DOMAIN=int(os.getenv("CRAWLER_MAX_PAGES_PER_DOMAIN","5"))
-CRAWLER_MAX_LEADS_PER_CYCLE=int(os.getenv("CRAWLER_MAX_LEADS_PER_CYCLE","10"))
-CRAWLER_MAX_REDIRECTS=int(os.getenv("CRAWLER_MAX_REDIRECTS","3"))
-CRAWLER_MAX_RESPONSE_BYTES=int(os.getenv("CRAWLER_MAX_RESPONSE_BYTES","2000000"))
-CRAWLER_MAX_ROBOTS_BYTES=int(os.getenv("CRAWLER_MAX_ROBOTS_BYTES","200000"))
-CRAWLER_MAX_TEXT_CHARS=int(os.getenv("CRAWLER_MAX_TEXT_CHARS","12000"))
-CRAWLER_MAX_DESCRIPTION_CHARS=int(os.getenv("CRAWLER_MAX_DESCRIPTION_CHARS","20000"))
-CRAWLER_MAX_LINKS=int(os.getenv("CRAWLER_MAX_LINKS","50"))
-CRAWLER_ALLOW_ROBOTS_FAILURE=os.getenv("CRAWLER_ALLOW_ROBOTS_FAILURE","false").lower()=="true"
+OUTREACH_ENABLED=os.getenv("OUTREACH_ENABLED","false").lower()=="true"; OUTREACH_FROM_EMAIL=os.getenv("OUTREACH_FROM_EMAIL",""); SMTP_HOST=os.getenv("SMTP_HOST",""); SMTP_PORT=int(os.getenv("SMTP_PORT","587")); SMTP_USERNAME=os.getenv("SMTP_USERNAME",""); SMTP_PASSWORD=os.getenv("SMTP_PASSWORD",""); SMTP_USE_TLS=os.getenv("SMTP_USE_TLS","true").lower()=="true"
+CRAWLER_ENABLED=os.getenv("CRAWLER_ENABLED","true").lower()=="true"; CRAWLER_USER_AGENT=os.getenv("CRAWLER_USER_AGENT","SSVPrasad-ClientAcquisitionBot/1.0 (+public-web-research)"); CRAWLER_TIMEOUT_SECONDS=float(os.getenv("CRAWLER_TIMEOUT_SECONDS","8")); CRAWLER_MIN_DELAY_SECONDS=float(os.getenv("CRAWLER_MIN_DELAY_SECONDS","2")); CRAWLER_MAX_SLEEP_SECONDS=float(os.getenv("CRAWLER_MAX_SLEEP_SECONDS","10")); CRAWLER_MAX_PAGES_PER_DOMAIN=int(os.getenv("CRAWLER_MAX_PAGES_PER_DOMAIN","5")); CRAWLER_MAX_LEADS_PER_CYCLE=int(os.getenv("CRAWLER_MAX_LEADS_PER_CYCLE","10")); CRAWLER_MAX_REDIRECTS=int(os.getenv("CRAWLER_MAX_REDIRECTS","3")); CRAWLER_MAX_RESPONSE_BYTES=int(os.getenv("CRAWLER_MAX_RESPONSE_BYTES","2000000")); CRAWLER_MAX_ROBOTS_BYTES=int(os.getenv("CRAWLER_MAX_ROBOTS_BYTES","200000")); CRAWLER_MAX_TEXT_CHARS=int(os.getenv("CRAWLER_MAX_TEXT_CHARS","12000")); CRAWLER_MAX_DESCRIPTION_CHARS=int(os.getenv("CRAWLER_MAX_DESCRIPTION_CHARS","20000")); CRAWLER_MAX_LINKS=int(os.getenv("CRAWLER_MAX_LINKS","50")); CRAWLER_ALLOW_ROBOTS_FAILURE=os.getenv("CRAWLER_ALLOW_ROBOTS_FAILURE","false").lower()=="true"
 MOCK_LEADS_FILE=BASE_DIR/"leads"/"data"/"mock_freelance_leads_100.json"
-
 FREELANCE_SEARCH_PROFILE={"name":"SSVPrasad","services":["AI Products","Business Automation","Full-Stack Development","Interactive Web"],"skills":["Python","C++","JavaScript","SQL","React","Vite","Three.js","React Three Fiber","Django","Django REST Framework","PostgreSQL","SQLite","OpenAI","webhooks","GitHub","Render","GitHub Pages","Cloudinary","Linux"],"projects":[{"name":"AI Business Automation Dashboard","evidence":"AI workflow demos, execution logging, dashboard and backend APIs."},{"name":"CareerInnTech","evidence":"Django-based career platform with AI interview functionality and PostgreSQL."},{"name":"AI Interview","evidence":"Voice-first AI mock interview experience with Django and frontend integration."},{"name":"3D Motion Portfolio","evidence":"React/Three.js portfolio focused on interactive web experiences."}]}
-
-REST_FRAMEWORK={
-    "DEFAULT_AUTHENTICATION_CLASSES":["rest_framework.authentication.TokenAuthentication"],
-    "DEFAULT_PERMISSION_CLASSES":["rest_framework.permissions.IsAuthenticated"],
-    "DEFAULT_RENDERER_CLASSES":["rest_framework.renderers.JSONRenderer","rest_framework.renderers.BrowsableAPIRenderer"],
-    "DEFAULT_PAGINATION_CLASS":"leads.pagination.StandardPagination",
-    "PAGE_SIZE":50,
-    "DEFAULT_THROTTLE_CLASSES":["rest_framework.throttling.AnonRateThrottle","rest_framework.throttling.UserRateThrottle","rest_framework.throttling.ScopedRateThrottle"],
-    "DEFAULT_THROTTLE_RATES":{"anon":"30/min","user":"120/min","discovery":"5/min","ai":"30/min","login":"5/min"},
-}
-
+REST_FRAMEWORK={"DEFAULT_AUTHENTICATION_CLASSES":["rest_framework.authentication.TokenAuthentication"],"DEFAULT_PERMISSION_CLASSES":["rest_framework.permissions.IsAuthenticated"],"DEFAULT_RENDERER_CLASSES":["rest_framework.renderers.JSONRenderer","rest_framework.renderers.BrowsableAPIRenderer"],"DEFAULT_PAGINATION_CLASS":"leads.pagination.StandardPagination","PAGE_SIZE":50,"DEFAULT_THROTTLE_CLASSES":["rest_framework.throttling.AnonRateThrottle","rest_framework.throttling.UserRateThrottle","rest_framework.throttling.ScopedRateThrottle"],"DEFAULT_THROTTLE_RATES":{"anon":"30/min","user":"120/min","discovery":"5/min","ai":"30/min","login":"5/min"}}
 if not DEBUG:
-    SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO","https")
-    SECURE_SSL_REDIRECT=os.getenv("SECURE_SSL_REDIRECT","true").lower()=="true"
-    SESSION_COOKIE_SECURE=True; CSRF_COOKIE_SECURE=True; X_FRAME_OPTIONS="DENY"
+    SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO","https"); SECURE_SSL_REDIRECT=os.getenv("SECURE_SSL_REDIRECT","true").lower()=="true"; SESSION_COOKIE_SECURE=True; CSRF_COOKIE_SECURE=True; X_FRAME_OPTIONS="DENY"
