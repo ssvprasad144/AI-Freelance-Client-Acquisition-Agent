@@ -2,6 +2,7 @@ from django.db.models import Count,Q,Sum
 from django.utils import timezone
 from .models import DiscoveryDomainStat,DiscoverySearchStat,Lead,Outreach,Meeting,Client,AcquisitionEvent,LearningStat
 from .discovery.profiles import arm_performance,domain_performance
+from .revenue_intelligence import revenue_metrics
 
 def _rate(n,d): return round((n/d)*100,2) if d else 0
 
@@ -60,7 +61,7 @@ def acquisition_metrics():
         "clients":{"total":clients,"active_or_won":active_clients,"new_prospects":Client.objects.filter(status="prospect").count()},
         "meetings":{"requested":meetings_requested,"scheduled":meetings_scheduled,"completed":meetings_completed,"cancelled":Meeting.objects.filter(status="cancelled").count(),"no_show":Meeting.objects.filter(status="no_show").count()},
         "funnel_series":funnel,"sources":source_rows,"lead_types":type_rows,"profiles":profile_rows,"strategies":strategy_rows,
-        "domains":domain_rows,"learning":learning_rows,"search_learning":_search_learning(),"arm_learning":arm_performance(),"domain_learning":domain_performance(),"generated_at":timezone.now()
+        "domains":domain_rows,"learning":learning_rows,"search_learning":_search_learning(),"arm_learning":arm_performance(),"domain_learning":domain_performance(),"revenue":revenue_metrics(),"generated_at":timezone.now()
     }
 
 def _search_learning():
