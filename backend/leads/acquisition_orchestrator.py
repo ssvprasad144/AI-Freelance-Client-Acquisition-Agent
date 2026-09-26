@@ -65,7 +65,9 @@ VALID_ACTIONS={
 }
 
 def execute_action(opportunity,action,mode="approval_required",approved=False):
-    lead=opportunity.lead
+    with transaction.atomic():
+        opportunity=AcquisitionOpportunity.objects.select_for_update().select_related("lead").get(pk=opportunity.pk)
+        lead=opportunity.lead
     rule=VALID_ACTIONS.get(action)
     if not rule or lead.status not in rule["from"]:
         raise ValueError("Invalid or stale action for the lead's current stage.")
