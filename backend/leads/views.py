@@ -19,13 +19,14 @@ from .discovery.profiles import public_profiles, strategy_performance
 from .discovery_cycle import run_discovery_cycle
 from .lead_optimizer import local_lead_score, should_ai_qualify, ai_skip_analysis
 from .followup_service import process_due_followups as process_due_followups_service
+from .followup_intelligence import create_sequence, cancel_if_stopped
 from .acquisition import classify_reply, send_email, send_followup as send_followup_email
 from .outreach_adapters import resolve_outreach_destination
 from .proposal_service import create_proposal, current_version, revise_proposal, restore_version
 from .analytics import acquisition_metrics
 from .models import ActivityLog, FollowUp, FollowUpSequence, Lead, LeadAnalysis, Outreach, Proposal, Reply
 from .pagination import StandardPagination
-from .serializers import ActivityLogSerializer, FollowUpSerializer, LeadSerializer, ReplySerializer, OutreachSerializer
+from .serializers import ActivityLogSerializer, FollowUpSerializer, FollowUpSequenceSerializer, LeadSerializer, ReplySerializer, OutreachSerializer, ProposalSerializer
 
 def _normalize_title(value): return re.sub(r"\s+"," ",re.sub(r"[^a-z0-9 ]"," ",str(value).lower())).strip()
 def _normalize_url(value):
@@ -197,6 +198,70 @@ class LeadViewSet(viewsets.ModelViewSet):
         return Response(LeadSerializer(lead).data)
 
 @api_view(["GET"])
+@api_view(["GET"])
+def proposal_workspace(request, pk):
+    try: proposal=Proposal.objects.prefetch_related("versions").get(pk=pk)
+    except Proposal.DoesNotExist: return Response({"detail":"Proposal not found."},status=404)
+    version=current_version(proposal)
+    return Response({**ProposalSerializer(proposal).data,"current_content":version.content if version else ""})
+
+@api_view(["PUT"])
+def edit_proposal(request, pk):
+    try: proposal=Proposal.objects.get(pk=pk)
+    except Proposal.DoesNotExist: return Response({"detail":"Proposal not found."},status=404)
+    content=str(request.data.get("content") or "").strip()
+    if not content: return Response({"detail":"content is required."},status=400)
+    number=proposal.versions.order_by("-version_number").values_list("version_number",flat=True).first() or 0
+    version=proposal.versions.create(version_number=number+1,content=content,source="user",instruction="Manual workspace edit")
+    proposal.current_version=version.version_number; proposal.status="draft"; proposal.save(update_fields=["current_version","status","updated_at"])
+    proposal.outreach.update(message=content,status="draft")
+    return Response({**ProposalSerializer(proposal).data,"current_content":content})
+
+@api_view(["POST"])
+def revise_proposal_view(request, pk):
+    try: proposal=Proposal.objects.get(pk=pk)
+    except Proposal.DoesNotExist: return Response({"detail":"Proposal not found."},status=404)
+    try: version=revise_proposal(proposal,str(request.data.get("instruction") or ""))
+    except ValueError as exc: return Response({"detail":str(exc)},status=400)
+    proposal.outreach.update(message=version.content,status="draft")
+    return Response({**ProposalSerializer(proposal).data,"current_content":version.content})
+
+@api_view(["POST"])
+def restore_proposal_version(request, pk):
+    try: proposal=Proposal.objects.get(pk=pk); version=restore_version(proposal,int(request.data.get("version_number")))
+    except Proposal.DoesNotExist: return Response({"detail":"Proposal not found."},status=404)
+    except (ValueError,TypeError): return Response({"detail":"Valid version_number is required."},status=400)
+    proposal.outreach.update(message=version.content,status="draft")
+    return Response({**ProposalSerializer(proposal).data,"current_content":version.content})
+
+@api_view(["GET"])
+def proposals(request):
+    return _paginate(request,Proposal.objects.select_related("lead").prefetch_related("versions").order_by("-updated_at"),ProposalSerializer)
+
+@api_view(["POST"])
+def create_followup_sequence(request, pk):
+    try: lead=Lead.objects.get(pk=pk)
+    except Lead.DoesNotExist: return Response({"detail":"Lead not found."},status=404)
+    try: max_steps=int(request.data.get("max_steps",3))
+    except (TypeError,ValueError): max_steps=3
+    delays=request.data.get("delays_days") or [3,5,7]
+    if not isinstance(delays,list) or not delays: return Response({"detail":"delays_days must be a non-empty array."},status=400)
+    sequence,followup=create_sequence(lead,delays,max_steps)
+    ActivityLog.objects.create(lead=lead,event_type="followup.sequence_created",message="Intelligent follow-up sequence created as drafts. No message was sent.",metadata={"sequence_id":sequence.id,"first_followup_id":followup.id})
+    return Response({"sequence":FollowUpSequenceSerializer(sequence).data,"first_followup":FollowUpSerializer(followup).data},status=201)
+
+@api_view(["GET"])
+def followup_sequences(request):
+    return _paginate(request,FollowUpSequence.objects.select_related("lead").prefetch_related("followups").order_by("-created_at"),FollowUpSequenceSerializer)
+
+@api_view(["POST"])
+def cancel_followup_sequence(request, pk):
+    try: sequence=FollowUpSequence.objects.get(pk=pk)
+    except FollowUpSequence.DoesNotExist: return Response({"detail":"Sequence not found."},status=404)
+    sequence.status="cancelled"; sequence.save(update_fields=["status","updated_at"])
+    FollowUp.objects.filter(sequence=sequence,status__in=["draft","approved","due"]).update(status="cancelled")
+    return Response(FollowUpSequenceSerializer(sequence).data)
+
 def discovery_profiles(request):
     return Response({"profiles":public_profiles(),"strategy_performance":strategy_performance()})
 
