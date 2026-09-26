@@ -3,6 +3,7 @@ from typing import Any
 
 from django.conf import settings
 from openai import OpenAI
+from .public_crawler import enrich_leads
 
 
 class LiveDiscoveryError(Exception):
@@ -83,4 +84,6 @@ def discover_live(query: str) -> dict[str, Any]:
         lead["technologies"] = lead.get("technologies") or []
         lead["contact_info"] = lead.get("contact_info") or {}
         cleaned.append(lead)
+    if settings.CRAWLER_ENABLED:
+        cleaned = enrich_leads(cleaned)
     return {"leads": cleaned, "model": settings.DISCOVERY_MODEL}
