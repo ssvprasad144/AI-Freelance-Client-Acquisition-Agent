@@ -25,7 +25,7 @@ class Outreach(models.Model):
 class FollowUp(models.Model):
     STATUS=[("draft","Draft"),("approved","Approved"),("due","Due"),("sent","Sent"),("cancelled","Cancelled")]
     lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="followups"); scheduled_at=models.DateTimeField(); message=models.TextField()
-    status=models.CharField(max_length=20,choices=STATUS,default="draft"); approved_at=models.DateTimeField(null=True,blank=True); sent_at=models.DateTimeField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True)
+    status=models.CharField(max_length=20,default="draft"); approved_at=models.DateTimeField(null=True,blank=True); sent_at=models.DateTimeField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True)
 
 class Reply(models.Model):
     lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="replies")
@@ -46,6 +46,31 @@ class DiscoveryQueryCache(models.Model):
     class Meta:
         constraints=[models.UniqueConstraint(fields=["profile_id","normalized_query"],name="unique_discovery_query_cache")]
         ordering=["searched_at","created_at"]
+
+class DiscoverySearchStat(models.Model):
+    profile_id=models.CharField(max_length=100,db_index=True)
+    query=models.CharField(max_length=1000)
+    normalized_query=models.CharField(max_length=1000,db_index=True)
+    source=models.CharField(max_length=100,default="web_search",db_index=True)
+    search_date=models.DateField(db_index=True)
+    raw_results=models.PositiveIntegerField(default=0)
+    valid_results=models.PositiveIntegerField(default=0)
+    unique_results=models.PositiveIntegerField(default=0)
+    scored_candidates=models.PositiveIntegerField(default=0)
+    crawled_candidates=models.PositiveIntegerField(default=0)
+    newly_created_leads=models.PositiveIntegerField(default=0)
+    duplicates=models.PositiveIntegerField(default=0)
+    locally_filtered=models.PositiveIntegerField(default=0)
+    ai_calls=models.PositiveIntegerField(default=0)
+    analyzed=models.PositiveIntegerField(default=0)
+    qualified=models.PositiveIntegerField(default=0)
+    replied=models.PositiveIntegerField(default=0)
+    won=models.PositiveIntegerField(default=0)
+    created_at=models.DateTimeField(auto_now_add=True)
+    updated_at=models.DateTimeField(auto_now=True)
+    class Meta:
+        ordering=["-search_date","-created_at"]
+        indexes=[models.Index(fields=["profile_id","search_date"]),models.Index(fields=["source","search_date"])]
 
 class ActivityLog(models.Model):
     lead=models.ForeignKey(Lead,on_delete=models.CASCADE,null=True,blank=True,related_name="activity"); event_type=models.CharField(max_length=100)
