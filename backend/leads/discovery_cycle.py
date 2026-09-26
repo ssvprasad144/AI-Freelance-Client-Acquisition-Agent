@@ -112,7 +112,7 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
     if cache_fresh or reused_cache:
         source_cache=cache if cache_fresh else reused_cache
         items=list(source_cache.result_payload or [])
-        if not items and cache_fresh:
+        if not items:
             payload=_payload(query,profile_id,source=source,cached=True,skip_reason="fresh query cache",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.cache_hit",message="Discovery query served from freshness cache; no web search performed.",metadata=payload); return payload
         payload=_payload(query,profile_id,source=source,cached=True,reused=bool(reused_cache),skip_reason="semantic result reuse" if reused_cache else "fresh query cache",strategy_id=strategy_id)
         ActivityLog.objects.create(event_type="discovery.cache_hit",message="Discovery results reused without a new web search.",metadata=payload)
