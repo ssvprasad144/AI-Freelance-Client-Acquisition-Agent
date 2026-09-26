@@ -29,7 +29,12 @@ def _store(items):
                 invalid+=1; continue
             normalized_url=_normalize_url(item["source_url"])
             normalized_title=_normalize_title(item["title"])
-            if Lead.objects.filter(normalized_url=normalized_url).exists() or Lead.objects.filter(normalized_title=normalized_title,company__iexact=item.get("company","")).exists():
+            existing=Lead.objects.filter(normalized_url=normalized_url).first() or Lead.objects.filter(normalized_title=normalized_title,company__iexact=item.get("company","")).first()
+            if existing:
+                existing.last_verified_at=timezone.now()
+                if item.get("expires_at"):
+                    existing.expires_at=item.get("expires_at")
+                existing.save(update_fields=["last_verified_at","expires_at","updated_at"])
                 duplicates+=1; continue
             Lead.objects.create(
                 title=item["title"],normalized_title=normalized_title,normalized_url=normalized_url,
