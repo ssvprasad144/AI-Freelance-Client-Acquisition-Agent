@@ -67,7 +67,7 @@ class MeetingSerializer(serializers.ModelSerializer):
 class AcquisitionEventSerializer(serializers.ModelSerializer):
     class Meta: model=AcquisitionEvent; fields="__all__"
 
-class LearningStatSerializer,AcquisitionOpportunitySerializer(serializers.ModelSerializer):
+class LearningStatSerializer(serializers.ModelSerializer):
     class Meta: model=LearningStat; fields="__all__"
 
 
