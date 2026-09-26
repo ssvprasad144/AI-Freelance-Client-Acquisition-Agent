@@ -9,6 +9,7 @@ from django.utils import timezone
 from .ai_service import analyze_lead
 from .discovery.service import DiscoveryService
 from .models import ActivityLog, Lead, LeadAnalysis
+from .lead_optimizer import local_lead_score, should_ai_qualify, ai_skip_analysis
 
 
 def _normalize_title(value):
@@ -59,9 +60,17 @@ def run_discovery_cycle(query=None, source="live", qualification_limit=None):
     created, duplicates, invalid = _store(items)
     limit = qualification_limit or settings.DISCOVERY_MAX_RESULTS
     candidates = list(Lead.objects.filter(status="new", analysis__isnull=True).order_by("-discovered_at", "-created_at")[:limit])
-    analyzed = qualified = 0
+    analyzed = qualified = locally_filtered = 0
+    ai_input_tokens = ai_output_tokens = 0
     for lead in candidates:
-        data = analyze_lead(lead)
+        local = local_lead_score(lead)
+        if not should_ai_qualify(lead):
+            data = ai_skip_analysis(lead, local)
+            locally_filtered += 1
+        else:
+            data = analyze_lead(lead)
+            ai_input_tokens += int(data.get("input_tokens", 0) or 0)
+            ai_output_tokens += int(data.get("output_tokens", 0) or 0)
         analysis, _ = LeadAnalysis.objects.update_or_create(lead=lead, defaults=data)
         analyzed += 1
         if analysis.relevant and analysis.match_score >= settings.QUALIFICATION_MIN_SCORE:
@@ -77,8 +86,15 @@ def run_discovery_cycle(query=None, source="live", qualification_limit=None):
     payload = {
         "query": query, "source": result.get("source", source), "model": result.get("model", "unknown"),
         "discovered": len(items), "created": created, "duplicates": duplicates, "invalid": invalid,
-        "analyzed": analyzed, "qualified": qualified, "qualification_threshold": settings.QUALIFICATION_MIN_SCORE,
+        "analyzed": analyzed, "qualified": qualified, "locally_filtered": locally_filtered,
+        "ai_calls": analyzed - locally_filtered, "ai_input_tokens": ai_input_tokens, "ai_output_tokens": ai_output_tokens,
+        "qualification_threshold": settings.QUALIFICATION_MIN_SCORE,
     }
+    ActivityLog.objects.create(
+        event_type="ai.usage",
+        message="Discovery AI usage recorded.",
+        metadata={"operation":"qualification","model":result.get("model","unknown"),"ai_calls":analyzed-locally_filtered,"input_tokens":ai_input_tokens,"output_tokens":ai_output_tokens},
+    )
     ActivityLog.objects.create(
         event_type="discovery.completed",
         message=f"Discovery cycle completed: {created} new leads, {qualified} qualified.",
