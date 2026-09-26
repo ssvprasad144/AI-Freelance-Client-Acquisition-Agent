@@ -12,7 +12,7 @@ if not SECRET_KEY and not DEBUG:
     raise RuntimeError("DJANGO_SECRET_KEY must be configured when DEBUG=false.")
 if not SECRET_KEY:
     SECRET_KEY = "dev-only-secret-key"
-ALLOWED_HOSTS = [x.strip() for x in os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if x.strip()]
+ALLOWED_HOSTS = [x.strip() for x in os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost" if DEBUG else "").split(",") if x.strip()]
 INSTALLED_APPS=["django.contrib.admin","django.contrib.auth","django.contrib.contenttypes","django.contrib.sessions","django.contrib.messages","django.contrib.staticfiles","corsheaders","rest_framework","rest_framework.authtoken","leads"]
 MIDDLEWARE=["corsheaders.middleware.CorsMiddleware","django.middleware.security.SecurityMiddleware","whitenoise.middleware.WhiteNoiseMiddleware","django.contrib.sessions.middleware.SessionMiddleware","django.middleware.common.CommonMiddleware","django.middleware.csrf.CsrfViewMiddleware","django.contrib.auth.middleware.AuthenticationMiddleware","django.contrib.messages.middleware.MessageMiddleware","django.middleware.clickjacking.XFrameOptionsMiddleware"]
 ROOT_URLCONF="config.urls"; TEMPLATES=[{"BACKEND":"django.template.backends.django.DjangoTemplates","DIRS":[],"APP_DIRS":True,"OPTIONS":{"context_processors":["django.template.context_processors.request","django.contrib.auth.context_processors.auth","django.contrib.messages.context_processors.messages"]}}]; WSGI_APPLICATION="config.wsgi.application"
@@ -21,7 +21,7 @@ if os.getenv("DATABASE_URL"):
     DATABASES={"default":dj_database_url.parse(os.environ["DATABASE_URL"],conn_max_age=600,ssl_require=os.getenv("DATABASE_SSL_REQUIRE","true").lower()=="true")}
 else: DATABASES={"default":{"ENGINE":"django.db.backends.sqlite3","NAME":BASE_DIR/"db.sqlite3"}}
 LANGUAGE_CODE="en-us"; TIME_ZONE="Asia/Kolkata"; USE_I18N=True; USE_TZ=True; STATIC_URL="static/"; STATIC_ROOT=BASE_DIR/"staticfiles"; STORAGES={"staticfiles":{"BACKEND":"whitenoise.storage.CompressedManifestStaticFilesStorage"}}; DEFAULT_AUTO_FIELD="django.db.models.BigAutoField"
-CORS_ALLOWED_ORIGINS=[x.strip() for x in os.getenv("CORS_ALLOWED_ORIGINS","http://localhost:5173").split(",") if x.strip()]
+CORS_ALLOWED_ORIGINS=[x.strip() for x in os.getenv("CORS_ALLOWED_ORIGINS","http://localhost:5173" if DEBUG else "").split(",") if x.strip()]
 CSRF_TRUSTED_ORIGINS=[x.strip() for x in os.getenv("CSRF_TRUSTED_ORIGINS","").split(",") if x.strip()]
 OPENAI_API_KEY=os.getenv("OPENAI_API_KEY",""); OPENAI_MODEL=os.getenv("OPENAI_MODEL","gpt-4o-mini"); DISCOVERY_MODEL=os.getenv("DISCOVERY_MODEL","gpt-4o-mini")
 DISCOVERY_MAX_RESULTS=int(os.getenv("DISCOVERY_MAX_RESULTS","20")); DISCOVERY_SEARCH_CONTEXT_SIZE=os.getenv("DISCOVERY_SEARCH_CONTEXT_SIZE","low")
