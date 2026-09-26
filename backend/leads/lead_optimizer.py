@@ -38,7 +38,7 @@ def local_lead_score(lead):
 
     score = 0
     score += min(55, sum(min(20, len(hits) * 8) for hits in service_hits.values()))
-    score += min(25, len(intent_hits) * 5)
+    score += min(25, len(intent_hits) * 5)\n    score += min(6, len(service_hits) * 2)
     score += 10 if url_ok else 0
     score -= min(40, len(exclusion_hits) * 20)
 
