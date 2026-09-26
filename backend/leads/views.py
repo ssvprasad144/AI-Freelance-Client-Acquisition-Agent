@@ -14,6 +14,7 @@ from .serializers import ActivityLogSerializer, LeadSerializer, FollowUpSerializ
 from .discovery.service import DiscoveryService
 from .discovery.mock_provider import DiscoveryError
 from .discovery.live_provider import LiveDiscoveryError
+from .followup_service import process_due_followups as process_due_followups_service
 
 def _normalize_title(value):
     return re.sub(r"\\s+", " ", re.sub(r"[^a-z0-9 ]", " ", str(value).lower())).strip()
@@ -88,16 +89,7 @@ def create_followup(request, pk=None):
 
 @api_view(["POST"])
 def process_due_followups(request):
-    now=timezone.now()
-    due=FollowUp.objects.filter(status="approved",scheduled_at__lte=now).select_related("lead").order_by("scheduled_at")
-    processed=0
-    with transaction.atomic():
-        for followup in due:
-            followup.status="due"
-            followup.save(update_fields=["status"])
-            ActivityLog.objects.create(lead=followup.lead,event_type="followup.due",message="Approved follow-up reached its scheduled time and is ready for action. No message was sent.",metadata={"followup_id":followup.id})
-            processed+=1
-    return Response({"processed":processed,"due":FollowUp.objects.filter(status="due").count(),"sent":False})
+    return Response(process_due_followups_service())
 
 @api_view(["GET"])
 def due_followups(request):
