@@ -275,6 +275,8 @@ class OutreachPlan(models.Model):
     channel=models.CharField(max_length=40,db_index=True); variant=models.CharField(max_length=20,default="A")
     message=models.TextField(); destination_url=models.URLField(blank=True); automatic=models.BooleanField(default=False)
     status=models.CharField(max_length=20,default="draft",db_index=True); approved_at=models.DateTimeField(null=True,blank=True); sent_at=models.DateTimeField(null=True,blank=True)
+    attempt_count=models.PositiveSmallIntegerField(default=0)
+    last_attempt_at=models.DateTimeField(null=True,blank=True)
     last_reason=models.TextField(blank=True); created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True)
     class Meta:
         ordering=["-updated_at"]
