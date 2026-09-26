@@ -50,7 +50,7 @@ def build_queue(limit=50):
     rows=[]
     for lead in Lead.objects.exclude(status__in=TERMINAL).select_related("analysis").prefetch_related("replies","meetings")[:500]:
         rows.append(ensure_opportunity(lead))
-    rows.sort(key=lambda x:(x.score,-x.updated_at.timestamp()),reverse=True)
+    rows.sort(key=lambda x:(x.score,x.updated_at.timestamp()),reverse=True)
     return rows[:limit]
 
 VALID_ACTIONS={
