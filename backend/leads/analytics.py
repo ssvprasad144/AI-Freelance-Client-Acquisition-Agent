@@ -7,14 +7,14 @@ def _rate(n,d): return round((n/d)*100,2) if d else 0
 
 def _rows(qs,group):
     return list(qs.values(group).annotate(
-        opportunities=Count("id"),
-        qualified=Count("id",filter=Q(status__in=["qualified","proposal","contacted","replied","won"])),
-        proposals=Count("id",filter=Q(status__in=["proposal","contacted","replied","won"])),
-        contacted=Count("id",filter=Q(status__in=["contacted","replied","won"])),
-        replies=Count("id",filter=Q(status__in=["replied","won"])),
-        meetings=Count("meetings",filter=Q(meetings__status__in=["requested","scheduled","completed"])),
-        won=Count("id",filter=Q(status="won")),
-        lost=Count("id",filter=Q(status="lost")),
+        opportunities=Count("id",distinct=True),
+        qualified=Count("id",distinct=True,filter=Q(status__in=["qualified","proposal","contacted","replied","won"])),
+        proposals=Count("id",distinct=True,filter=Q(status__in=["proposal","contacted","replied","won"])),
+        contacted=Count("id",distinct=True,filter=Q(status__in=["contacted","replied","won"])),
+        replies=Count("id",distinct=True,filter=Q(status__in=["replied","won"])),
+        meetings=Count("meetings",distinct=True,filter=Q(meetings__status__in=["requested","scheduled","completed"])),
+        won=Count("id",distinct=True,filter=Q(status="won")),
+        lost=Count("id",distinct=True,filter=Q(status="lost")),
     ).order_by("-opportunities")[:50])
 
 def acquisition_metrics():
