@@ -343,6 +343,8 @@ def mark_outreach_submitted(request,pk):
     item.status="submitted"; item.submitted_at=timezone.now()
     item.save(update_fields=["status","submitted_at"])
     log_acquisition_event(item.lead,"sent",{"outreach_id":item.id,"manual":True,"medium":item.medium})
+    if item.lead.status not in {"replied","won","lost","archived"}:
+        item.lead.status="contacted"; item.lead.save(update_fields=["status","updated_at"])
     return Response({"id":item.id,"status":item.status})
 
 @api_view(["GET"])
