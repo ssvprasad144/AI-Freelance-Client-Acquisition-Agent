@@ -318,19 +318,26 @@ def send_followup(request,pk):
 def send_outreach(request,pk):
     try: outreach=Outreach.objects.select_related("lead").get(pk=pk)
     except Outreach.DoesNotExist: return Response({"detail":"Outreach not found."},status=404)
+    claimed=Outreach.objects.filter(pk=pk,status__in=["draft","approved","opened"]).update(status="sending")
+    if not claimed:
+        return Response({"detail":"Outreach is not actionable or has already been sent."},status=409)
+    outreach.refresh_from_db()
     try:
         result=send_email(outreach)
         plan=OutreachPlan.objects.filter(lead=outreach.lead,channel=outreach.medium,message=outreach.message,status="approved").order_by("-updated_at").first()
         if plan:
             from .outreach_intelligence import record_attempt_for_outreach
             record_attempt_for_outreach(plan)
-        OutreachPlan.objects.filter(lead=outreach.lead,channel=outreach.medium,message=outreach.message,status="approved").update(status="sent",sent_at=timezone.now())
+        outreach.status="sent"; outreach.sent_at=timezone.now(); outreach.save(update_fields=["status","sent_at"])
         log_acquisition_event(outreach.lead,"sent",{"outreach_id":outreach.id})
         client,contact=sync_lead_client(outreach.lead)
         if client: record_message(client,outreach.lead,outreach.medium,"outbound",outreach.message,{"outreach_id":outreach.id},contact)
         return Response(result)
-    except ValueError as exc: return Response({"detail":str(exc),"sent":False},status=400)
+    except ValueError as exc:
+        outreach.status="approved"; outreach.save(update_fields=["status"])
+        return Response({"detail":str(exc),"sent":False},status=400)
     except Exception as exc:
+        outreach.status="approved"; outreach.save(update_fields=["status"])
         ActivityLog.objects.create(lead=outreach.lead,event_type="outreach.error",message="Configured outreach provider failed.",metadata={"outreach_id":outreach.id,"error":str(exc)})
         return Response({"detail":"Outbound provider failed.","sent":False},status=502)
 
