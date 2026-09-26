@@ -49,6 +49,7 @@ class DiscoveryQueryCache(models.Model):
 
 class DiscoverySearchStat(models.Model):
     profile_id=models.CharField(max_length=100,db_index=True)
+    strategy_id=models.CharField(max_length=100,default="general-web",db_index=True)
     query=models.CharField(max_length=1000)
     normalized_query=models.CharField(max_length=1000,db_index=True)
     source=models.CharField(max_length=100,default="web_search",db_index=True)
