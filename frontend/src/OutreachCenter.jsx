@@ -7,7 +7,7 @@ const actionLabels={open_bid:"Open bid",open_profile:"Open profile",open_post:"O
 export default function OutreachCenter(){
  const [items,setItems]=useState([]),[error,setError]=useState(""),[busy,setBusy]=useState(null);
  async function refresh(){try{setItems(await api.outreachReady())}catch(e){setError(e.message)}}
- useEffect(()=>{if(new URLSearchParams(window.location.search).get("demo")==="1")return;void refresh()},[]);
+ useEffect(()=>{if(import.meta.env.VITE_PUBLIC_PREVIEW!=="false")return;void refresh()},[]);
  async function act(id,fn){setBusy(id);setError("");try{await fn();await refresh()}catch(e){setError(e.message)}finally{setBusy(null)}}
  function copy(text){navigator.clipboard?.writeText(text)}
  return <section className="panel outreach-center">
