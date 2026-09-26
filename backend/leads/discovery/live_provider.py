@@ -15,13 +15,15 @@ Return ONLY valid JSON in this shape:
 {
   "leads": [{
     "title": "string", "company": "string", "description": "string",
-    "source": "string", "source_url": "https://...",
+    "source": "string", "source_url": "https://...", "action_url": "https://...",
     "lead_type": "freelance|direct|startup|other", "budget_text": "string",
     "technologies": ["string"], "contact_info": {}
   }]
 }
 Rules:
 - Prefer current opportunities with a verifiable public source URL.
+- When the result exposes a distinct application/bid/contact URL, return it as action_url; otherwise omit it and let the system use source_url.
+- Preserve the exact public URL supplied by the search result; never fabricate URL paths.
 - Never invent a company, budget, contact, project, or URL.
 - Do not claim a page is available unless the search result supports it.
 - Do not target or bypass login-only/private content.
@@ -83,5 +85,9 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
         lead["lead_type"] = lead.get("lead_type") or "freelance"
         lead["technologies"] = lead.get("technologies") or []
         lead["contact_info"] = lead.get("contact_info") or {}
+        if lead.get("action_url") and isinstance(lead["action_url"], str):
+            lead["action_url"] = lead["action_url"].strip()
+        else:
+            lead.pop("action_url", None)
         cleaned.append(lead)
     return {"leads": cleaned, "model": settings.DISCOVERY_MODEL}
