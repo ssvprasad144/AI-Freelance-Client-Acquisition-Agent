@@ -92,3 +92,9 @@ class AcquisitionEngineTests(APITestBase):
         self.assertEqual(response.status_code,400)
         outreach.refresh_from_db()
         self.assertEqual(outreach.status,"approved")
+
+    def test_due_followup_stays_blocked_without_explicit_enable(self):
+        followup=FollowUp.objects.create(lead=self.lead,scheduled_at=timezone.now(),message="Follow up",status="due")
+        response=self.client.post(f"/api/followups/{followup.id}/send/",format="json")
+        self.assertEqual(response.status_code,400)
+        followup.refresh_from_db(); self.assertEqual(followup.status,"due")
