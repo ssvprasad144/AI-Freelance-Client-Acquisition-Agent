@@ -16,7 +16,7 @@ export const api={
  me:()=>request("/auth/me/"),
  logout:()=>clearToken(),
  dashboard:()=>request("/dashboard/"),
- leads:async()=>collection(await request("/leads/")),
+ leads:(page=1)=>request("/leads/?page="+page+"&page_size=50"),
  analyze:id=>request("/leads/"+id+"/analyze/",{method:"POST"}),
  proposal:id=>request("/leads/"+id+"/proposal/",{method:"POST"}),
  approveProposal:id=>request("/leads/"+id+"/approve_proposal/",{method:"POST"}),
