@@ -68,6 +68,25 @@ def _usage(response):
     )
 
 
+def _validated_analysis(data):
+    required={"relevant":bool,"match_score":int,"service_match":str,"requirements":list,"pain_points":list,"recommended_approach":str,"matching_projects":list,"confidence":int}
+    if not isinstance(data,dict) or any(k not in data for k in required):
+        raise ValueError("AI qualification response is missing required fields.")
+    for key,kind in required.items():
+        if not isinstance(data[key],kind):
+            raise ValueError(f"AI qualification field {key} has an invalid type.")
+    data["match_score"]=max(0,min(100,data["match_score"]))
+    data["confidence"]=max(0,min(100,data["confidence"]))
+    return data
+
+
+def _validated_proposal(text):
+    text=(text or "").strip()
+    if not text or len(text)>12000:
+        raise ValueError("AI proposal response is empty or unreasonably large.")
+    return text
+
+
 def analyze_lead(lead) -> dict[str, Any]:
     if not settings.OPENAI_API_KEY:
         return deterministic_analysis(lead)
@@ -92,7 +111,11 @@ def analyze_lead(lead) -> dict[str, Any]:
         ],
         max_output_tokens=settings.AI_QUALIFICATION_MAX_OUTPUT_TOKENS,
     )
-    data = json.loads(response.output_text)
+    try:
+        data = _validated_analysis(json.loads(response.output_text))
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        ActivityLog.objects.create(lead=lead,event_type="ai.validation_error",message="AI qualification response failed validation; deterministic fallback used.",metadata={"error":str(exc),"model":settings.OPENAI_MODEL})
+        return deterministic_analysis(lead)
     input_tokens, output_tokens, cached_tokens = _usage(response)
     data.update({
         "model": settings.OPENAI_MODEL,
@@ -149,4 +172,4 @@ def generate_proposal(lead, analysis) -> str:
             "cached_input_tokens": cached_tokens,
         },
     )
-    return response.output_text
+    return _validated_proposal(response.output_text)

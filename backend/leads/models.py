@@ -261,6 +261,9 @@ class AcquisitionOpportunity(models.Model):
     action_category=models.CharField(max_length=60,default="")
     reason=models.TextField(blank=True)
     status=models.CharField(max_length=30,default="ready",db_index=True)
+    execution_count=models.PositiveSmallIntegerField(default=0)
+    last_action=models.CharField(max_length=60,blank=True)
+    last_error=models.TextField(blank=True)
     executed_at=models.DateTimeField(null=True,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)
     updated_at=models.DateTimeField(auto_now=True)
@@ -272,6 +275,8 @@ class OutreachPlan(models.Model):
     channel=models.CharField(max_length=40,db_index=True); variant=models.CharField(max_length=20,default="A")
     message=models.TextField(); destination_url=models.URLField(blank=True); automatic=models.BooleanField(default=False)
     status=models.CharField(max_length=20,default="draft",db_index=True); approved_at=models.DateTimeField(null=True,blank=True); sent_at=models.DateTimeField(null=True,blank=True)
+    attempt_count=models.PositiveSmallIntegerField(default=0)
+    last_attempt_at=models.DateTimeField(null=True,blank=True)
     last_reason=models.TextField(blank=True); created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True)
     class Meta:
         ordering=["-updated_at"]
@@ -283,5 +288,6 @@ class RevenueRecord(models.Model):
     estimated_value=models.DecimalField(max_digits=14,decimal_places=2,default=0); quoted_value=models.DecimalField(max_digits=14,decimal_places=2,default=0); won_value=models.DecimalField(max_digits=14,decimal_places=2,default=0); expected_value=models.DecimalField(max_digits=14,decimal_places=2,default=0)
     currency=models.CharField(max_length=3,default="USD"); probability=models.FloatField(default=25)
     search_cost=models.DecimalField(max_digits=14,decimal_places=4,default=0); ai_cost=models.DecimalField(max_digits=14,decimal_places=4,default=0); crawler_cost=models.DecimalField(max_digits=14,decimal_places=4,default=0); outreach_cost=models.DecimalField(max_digits=14,decimal_places=4,default=0)
+    source=models.CharField(max_length=100,blank=True,db_index=True); profile_id=models.CharField(max_length=100,blank=True,db_index=True); strategy_id=models.CharField(max_length=100,blank=True,db_index=True); domain=models.CharField(max_length=255,blank=True,db_index=True); query_family=models.CharField(max_length=120,blank=True,db_index=True); channel=models.CharField(max_length=40,blank=True,db_index=True); message_variant=models.CharField(max_length=20,blank=True)
     created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True)
     class Meta: ordering=["-won_value","-expected_value","-updated_at"]

@@ -28,6 +28,8 @@ from .meeting_service import sync_meeting_context, apply_meeting_status
 from .learning import log_acquisition_event, refresh_learning
 from .acquisition_orchestrator import build_queue, ensure_opportunity, execute_action, recalculate_opportunities
 from .outreach_intelligence import build_outreach_plans, create_plan, channel_metrics, mark_approved
+
+
 from .revenue_intelligence import upsert_revenue, revenue_metrics, optimization_report
 from .analytics import acquisition_metrics
 from .models import ActivityLog, FollowUp, FollowUpSequence, Lead, LeadAnalysis, Outreach, Proposal, Reply, Client, Contact, Conversation, Meeting, AcquisitionEvent, LearningStat, AcquisitionOpportunity, OutreachPlan, RevenueRecord
@@ -47,13 +49,21 @@ def _paginate(request,qs,serializer):
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health(request):
+    from django.db import connection
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+        database="ok"
+    except Exception:
+        return JsonResponse({"status":"unhealthy","database":"error","service":"ai-freelance-client-acquisition-agent"},status=503)
     now=timezone.now()
     discovery=ActivityLog.objects.filter(event_type="worker.discovery.heartbeat").order_by("-created_at").first()
     followup=ActivityLog.objects.filter(event_type="worker.followup.heartbeat").order_by("-created_at").first()
     def state(item,interval):
         if not item:return {"status":"unknown","last_seen":None}
         return {"status":"healthy" if (now-item.created_at).total_seconds()<=max(interval*2,120) else "stale","last_seen":item.created_at}
-    return JsonResponse({"status":"ok","service":"ai-freelance-client-acquisition-agent","discovery":"web_search","workers":{"discovery":state(discovery,settings.DISCOVERY_WORKER_INTERVAL),"followups":state(followup,settings.FOLLOWUP_WORKER_INTERVAL)}})
+    return JsonResponse({"status":"healthy","database":database,"service":"ai-freelance-client-acquisition-agent","discovery":"web_search","workers":{"discovery":state(discovery,settings.DISCOVERY_WORKER_INTERVAL),"followups":state(followup,settings.FOLLOWUP_WORKER_INTERVAL)}})
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
@@ -295,9 +305,19 @@ def analytics(request):
 def send_followup(request,pk):
     try: followup=FollowUp.objects.select_related("lead").get(pk=pk)
     except FollowUp.DoesNotExist: return Response({"detail":"Follow-up not found."},status=404)
-    try: return Response(send_followup_email(followup))
-    except ValueError as exc: return Response({"detail":str(exc),"sent":False},status=400)
+    claimed=FollowUp.objects.filter(pk=pk,status="due").update(status="sending")
+    if not claimed:
+        return Response({"detail":"Follow-up is not due or is already being/sent."},status=409)
+    followup.refresh_from_db()
+    try:
+        followup.status="due"
+        result=send_followup_email(followup)
+        return Response(result)
+    except ValueError as exc:
+        followup.status="due"; followup.save(update_fields=["status"])
+        return Response({"detail":str(exc),"sent":False},status=400)
     except Exception as exc:
+        followup.status="due"; followup.save(update_fields=["status"])
         ActivityLog.objects.create(lead=followup.lead,event_type="followup.error",message="Configured follow-up provider failed.",metadata={"followup_id":followup.id,"error":str(exc)})
         return Response({"detail":"Outbound provider failed.","sent":False},status=502)
 
@@ -305,14 +325,26 @@ def send_followup(request,pk):
 def send_outreach(request,pk):
     try: outreach=Outreach.objects.select_related("lead").get(pk=pk)
     except Outreach.DoesNotExist: return Response({"detail":"Outreach not found."},status=404)
+    claimed=Outreach.objects.filter(pk=pk,status__in=["draft","approved","opened"]).update(status="sending")
+    if not claimed:
+        return Response({"detail":"Outreach is not actionable or has already been sent."},status=409)
+    outreach.refresh_from_db()
     try:
         result=send_email(outreach)
+        plan=OutreachPlan.objects.filter(lead=outreach.lead,channel=outreach.medium,message=outreach.message,status="approved").order_by("-updated_at").first()
+        if plan:
+            from .outreach_intelligence import record_attempt_for_outreach
+            record_attempt_for_outreach(plan)
+        outreach.status="sent"; outreach.sent_at=timezone.now(); outreach.save(update_fields=["status","sent_at"])
         log_acquisition_event(outreach.lead,"sent",{"outreach_id":outreach.id})
         client,contact=sync_lead_client(outreach.lead)
         if client: record_message(client,outreach.lead,outreach.medium,"outbound",outreach.message,{"outreach_id":outreach.id},contact)
         return Response(result)
-    except ValueError as exc: return Response({"detail":str(exc),"sent":False},status=400)
+    except ValueError as exc:
+        outreach.status="approved"; outreach.save(update_fields=["status"])
+        return Response({"detail":str(exc),"sent":False},status=400)
     except Exception as exc:
+        outreach.status="approved"; outreach.save(update_fields=["status"])
         ActivityLog.objects.create(lead=outreach.lead,event_type="outreach.error",message="Configured outreach provider failed.",metadata={"outreach_id":outreach.id,"error":str(exc)})
         return Response({"detail":"Outbound provider failed.","sent":False},status=502)
 
@@ -343,9 +375,16 @@ def mark_outreach_submitted(request,pk):
     try: item=Outreach.objects.get(pk=pk)
     except Outreach.DoesNotExist: return Response({"detail":"Outreach not found."},status=404)
     if item.medium=="email": return Response({"detail":"Email outreach must be sent through the email action."},status=400)
-    if item.status not in {"draft","approved","opened"}: return Response({"detail":"Outreach is not actionable."},status=400)
+    claimed=Outreach.objects.filter(pk=pk,status__in=["draft","approved","opened"]).update(status="sending")
+    if not claimed: return Response({"detail":"Outreach is not actionable or has already been submitted."},status=409)
+    item.refresh_from_db()
     item.status="submitted"; item.submitted_at=timezone.now()
     item.save(update_fields=["status","submitted_at"])
+    plan=OutreachPlan.objects.filter(lead=item.lead,channel=item.medium,message=item.message,status="approved").order_by("-updated_at").first()
+    if plan:
+        from .outreach_intelligence import record_attempt_for_outreach
+        record_attempt_for_outreach(plan,item.submitted_at)
+    OutreachPlan.objects.filter(lead=item.lead,channel=item.medium,message=item.message,status="approved").update(status="sent",sent_at=timezone.now())
     log_acquisition_event(item.lead,"sent",{"outreach_id":item.id,"manual":True,"medium":item.medium})
     if item.lead.status not in {"replied","won","lost","archived"}:
         item.lead.status="contacted"; item.lead.save(update_fields=["status","updated_at"])
