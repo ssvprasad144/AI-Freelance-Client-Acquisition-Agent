@@ -29,7 +29,7 @@ from .learning import log_acquisition_event, refresh_learning
 from .analytics import acquisition_metrics
 from .models import ActivityLog, FollowUp, FollowUpSequence, Lead, LeadAnalysis, Outreach, Proposal, Reply, Client, Contact, Conversation, Meeting, AcquisitionEvent, LearningStat
 from .pagination import StandardPagination
-from .serializers import ActivityLogSerializer, FollowUpSerializer, FollowUpSequenceSerializer, LeadSerializer, ReplySerializer, OutreachSerializer, ProposalSerializer, ClientSerializer, ContactSerializer, ConversationSerializer, MeetingSerializer, AcquisitionEventSerializer, LearningStatSerializer
+from .serializers import ActivityLogSerializer, FollowUpSerializer, FollowUpSequenceSerializer, LeadSerializer, ReplySerializer, OutreachSerializer, ProposalSerializer, ClientSerializer, ContactSerializer, ConversationSerializer, MeetingSerializer, AcquisitionEventSerializer, LearningStatSerializer, ClientIntelligenceSerializer
 
 def _normalize_title(value): return re.sub(r"\s+"," ",re.sub(r"[^a-z0-9 ]"," ",str(value).lower())).strip()
 def _normalize_url(value):
@@ -343,7 +343,7 @@ def client_intelligence(request,pk):
     try: client=Client.objects.get(pk=pk)
     except Client.DoesNotExist: return Response({"detail":"Client not found."},status=404)
     intelligence=generate_client_intelligence(client)
-    return Response({"client":ClientSerializer(client).data,"intelligence":__import__("leads.serializers",fromlist=["ClientIntelligenceSerializer"]).ClientIntelligenceSerializer(intelligence).data})
+    return Response({"client":ClientSerializer(client).data,"intelligence":ClientIntelligenceSerializer(intelligence).data})
 
 @api_view(["GET"])
 def meetings(request):
