@@ -3,7 +3,7 @@ services:
     name: ai-freelance-client-agent-api
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt && python manage.py collectstatic --noinput
+    buildCommand: pip install -r requirements.txt && python manage.py check --deploy && python manage.py collectstatic --noinput
     preDeployCommand: python manage.py migrate
     startCommand: gunicorn config.wsgi:application
     healthCheckPath: /api/health/
@@ -18,6 +18,10 @@ services:
         sync: false
       - key: CORS_ALLOWED_ORIGINS
         sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: DATABASE_SSL_REQUIRE
+        value: "true"
       - key: DEBUG
         value: "false"
       - key: OPENAI_MODEL
@@ -85,7 +89,7 @@ services:
     name: ai-freelance-client-agent-discovery
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && python manage.py check --deploy
     preDeployCommand: python manage.py migrate
     startCommand: python manage.py run_discovery_cycle --loop
     envVars:
@@ -99,6 +103,10 @@ services:
         sync: false
       - key: CORS_ALLOWED_ORIGINS
         sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: DATABASE_SSL_REQUIRE
+        value: "true"
       - key: DEBUG
         value: "false"
       - key: OPENAI_MODEL
@@ -166,7 +174,7 @@ services:
     name: ai-freelance-client-agent-followups
     runtime: python
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && python manage.py check --deploy
     preDeployCommand: python manage.py migrate
     startCommand: python manage.py process_due_followups --loop
     envVars:
@@ -180,6 +188,10 @@ services:
         sync: false
       - key: CORS_ALLOWED_ORIGINS
         sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: DATABASE_SSL_REQUIRE
+        value: "true"
       - key: DEBUG
         value: "false"
       - key: OPENAI_MODEL
