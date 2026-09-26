@@ -121,3 +121,21 @@ The acquisition layer now includes:
 - explicit `OUTREACH_ENABLED=false` safety default
 - manual approval before any outreach can be sent
 - no automatic platform messaging or unauthorized scraping
+
+
+### Safe public-web crawler
+
+Live search results can now be enriched by a conservative public-web crawler. The crawler:
+- fetches only HTTP(S) public pages
+- checks `robots.txt` before crawling
+- blocks loopback, private, link-local, reserved, multicast and unspecified IP destinations
+- blocks URLs containing embedded credentials
+- follows only a small number of validated redirects
+- enforces per-domain request delays and page budgets
+- limits response size, text size, links and timeout
+- accepts HTML/XHTML/JSON only
+- does not log in, submit forms, execute JavaScript, solve CAPTCHAs, bypass access controls, or use proxies
+- enriches only URLs already discovered by the live search layer
+- remains disabled if `CRAWLER_ENABLED=false`
+
+The crawler uses Python's standard library, so no additional scraping framework is required.
