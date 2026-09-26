@@ -5,7 +5,8 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
-from .models import ActivityLog,FollowUp,Lead,LeadAnalysis,Reply
+from .models import ActivityLog,FollowUp,Lead,LeadAnalysis,Outreach,Reply
+from .analytics import acquisition_metrics
 
 class APITestBase(TestCase):
     def setUp(self):
@@ -69,3 +70,25 @@ class DiscoveryWorkerTests(APITestBase):
         discover.return_value=self._result(); analyze.return_value={"relevant":False,"match_score":20,"service_match":"Needs review","requirements":[],"pain_points":[],"recommended_approach":"Review manually.","matching_projects":[],"confidence":30,"model":"gpt-4o-mini","input_tokens":10,"output_tokens":10}
         call_command("run_discovery_cycle","--limit","5"); call_command("run_discovery_cycle","--limit","5")
         self.assertEqual(Lead.objects.filter(title="AI Automation Dashboard").count(),1); self.assertEqual(LeadAnalysis.objects.count(),1); self.assertEqual(analyze.call_count,1)
+
+
+class AcquisitionEngineTests(APITestBase):
+    def test_reply_is_classified_and_analytics_exposed(self):
+        response=self.client.post(f"/api/leads/{self.lead.id}/replies/",{"message":"I am interested, can we schedule a call?","channel":"email"},format="json")
+        self.assertEqual(response.status_code,201)
+        self.assertEqual(response.data["classification"]["intent"],"interested")
+        metrics=acquisition_metrics()
+        self.assertEqual(metrics["funnel"]["replied"],1)
+        self.assertEqual(self.client.get("/api/analytics/").status_code,200)
+
+    def test_discovery_profiles_are_available(self):
+        response=self.client.get("/api/discovery/profiles/")
+        self.assertEqual(response.status_code,200)
+        self.assertGreaterEqual(len(response.data["profiles"]),4)
+
+    def test_approved_outreach_stays_blocked_without_explicit_enable(self):
+        outreach=Outreach.objects.create(lead=self.lead,channel="email",message="Hello",status="approved")
+        response=self.client.post(f"/api/outreach/{outreach.id}/send/",format="json")
+        self.assertEqual(response.status_code,400)
+        outreach.refresh_from_db()
+        self.assertEqual(outreach.status,"approved")
