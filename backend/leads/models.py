@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 class Lead(models.Model):
     STATUS=[("new","New"),("qualified","Qualified"),("proposal","Proposal"),("contacted","Contacted"),("replied","Replied"),("won","Won"),("lost","Lost"),("archived","Archived")]
