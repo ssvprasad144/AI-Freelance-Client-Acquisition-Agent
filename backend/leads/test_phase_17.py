@@ -2,7 +2,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from .models import Lead, OutreachPlan
-from .outreach_intelligence import create_plan, eligible
+from .outreach_intelligence import create_plan, eligible, mark_approved
 
 class Phase17Tests(TestCase):
     """Regression coverage for safe, context-aware multichannel outreach (CI)."""
@@ -16,6 +16,12 @@ class Phase17Tests(TestCase):
     def test_reply_stops_outreach(self):
         self.lead.status="replied"; self.lead.save(update_fields=["status","updated_at"])
         self.assertFalse(eligible(self.lead))
+    def test_approved_plan_creates_outreach(self):
+        plan=create_plan(self.lead,"email","A")
+        approved=mark_approved(plan)
+        self.assertEqual(approved.status,"approved")
+        self.assertEqual(self.lead.outreach.filter(medium="email",status="approved").count(),1)
+
     def test_manual_channel_never_marked_automatic(self):
         plan=create_plan(self.lead,"linkedin","B")
         self.assertFalse(plan.automatic)
