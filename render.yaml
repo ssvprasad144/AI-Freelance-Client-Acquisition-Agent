@@ -35,6 +35,28 @@ services:
         value: "2"
       - key: DISCOVERY_LEARNING_LOOKBACK_DAYS
         value: "30"
+      - key: DISCOVERY_QUERY_VARIANT_MIN_SEARCHES
+        value: "2"
+      - key: DISCOVERY_MAX_EXCLUDED_DOMAINS
+        value: "8"
+      - key: DISCOVERY_LOW_YIELD_THRESHOLD
+        value: "0.5"
+      - key: DISCOVERY_SEARCH_CONTEXT_FALLBACK
+        value: "true"
+      - key: DISCOVERY_PREFERRED_HOURS_ENABLED
+        value: "true"
+      - key: DISCOVERY_PREFERRED_HOUR_START
+        value: "8"
+      - key: DISCOVERY_PREFERRED_HOUR_END
+        value: "22"
+      - key: DISCOVERY_SEMANTIC_REUSE_THRESHOLD
+        value: "0.62"
+      - key: DISCOVERY_FRESHNESS_HOURS
+        value: "48"
+      - key: DISCOVERY_DOMAIN_MIN_RESULTS
+        value: "8"
+      - key: DISCOVERY_DOMAIN_BLOCK_QUALIFIED_RATE
+        value: "0.05"
       - key: CRAWLER_MAX_LEADS_PER_CYCLE
         value: "5"
       - key: LOCAL_PREFILTER_MIN_SCORE
@@ -93,6 +115,28 @@ services:
         value: "2"
       - key: DISCOVERY_LEARNING_LOOKBACK_DAYS
         value: "30"
+      - key: DISCOVERY_QUERY_VARIANT_MIN_SEARCHES
+        value: "2"
+      - key: DISCOVERY_MAX_EXCLUDED_DOMAINS
+        value: "8"
+      - key: DISCOVERY_LOW_YIELD_THRESHOLD
+        value: "0.5"
+      - key: DISCOVERY_SEARCH_CONTEXT_FALLBACK
+        value: "true"
+      - key: DISCOVERY_PREFERRED_HOURS_ENABLED
+        value: "true"
+      - key: DISCOVERY_PREFERRED_HOUR_START
+        value: "8"
+      - key: DISCOVERY_PREFERRED_HOUR_END
+        value: "22"
+      - key: DISCOVERY_SEMANTIC_REUSE_THRESHOLD
+        value: "0.62"
+      - key: DISCOVERY_FRESHNESS_HOURS
+        value: "48"
+      - key: DISCOVERY_DOMAIN_MIN_RESULTS
+        value: "8"
+      - key: DISCOVERY_DOMAIN_BLOCK_QUALIFIED_RATE
+        value: "0.05"
       - key: CRAWLER_MAX_LEADS_PER_CYCLE
         value: "5"
       - key: LOCAL_PREFILTER_MIN_SCORE
@@ -151,6 +195,28 @@ services:
         value: "2"
       - key: DISCOVERY_LEARNING_LOOKBACK_DAYS
         value: "30"
+      - key: DISCOVERY_QUERY_VARIANT_MIN_SEARCHES
+        value: "2"
+      - key: DISCOVERY_MAX_EXCLUDED_DOMAINS
+        value: "8"
+      - key: DISCOVERY_LOW_YIELD_THRESHOLD
+        value: "0.5"
+      - key: DISCOVERY_SEARCH_CONTEXT_FALLBACK
+        value: "true"
+      - key: DISCOVERY_PREFERRED_HOURS_ENABLED
+        value: "true"
+      - key: DISCOVERY_PREFERRED_HOUR_START
+        value: "8"
+      - key: DISCOVERY_PREFERRED_HOUR_END
+        value: "22"
+      - key: DISCOVERY_SEMANTIC_REUSE_THRESHOLD
+        value: "0.62"
+      - key: DISCOVERY_FRESHNESS_HOURS
+        value: "48"
+      - key: DISCOVERY_DOMAIN_MIN_RESULTS
+        value: "8"
+      - key: DISCOVERY_DOMAIN_BLOCK_QUALIFIED_RATE
+        value: "0.05"
       - key: CRAWLER_MAX_LEADS_PER_CYCLE
         value: "5"
       - key: LOCAL_PREFILTER_MIN_SCORE
