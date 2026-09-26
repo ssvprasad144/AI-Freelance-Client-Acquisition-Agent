@@ -16,6 +16,8 @@ from .discovery.live_provider import LiveDiscoveryError
 from .discovery.mock_provider import DiscoveryError
 from .discovery.service import DiscoveryService
 from .followup_service import process_due_followups as process_due_followups_service
+from .acquisition import classify_reply, send_email
+from .analytics import acquisition_metrics
 from .models import ActivityLog, FollowUp, Lead, LeadAnalysis, Outreach, Reply
 from .pagination import StandardPagination
 from .serializers import ActivityLogSerializer, FollowUpSerializer, LeadSerializer, ReplySerializer
@@ -129,9 +131,14 @@ def create_reply(request,pk):
     message=str(request.data.get("message") or "").strip()
     if not message:return Response({"detail":"message is required."},status=400)
     reply=Reply.objects.create(lead=lead,channel=str(request.data.get("channel") or "email"),message=message,intent="needs_review")
+    try:
+        classification=classify_reply(reply)
+        reply.sentiment=classification.get("sentiment",""); reply.intent=classification.get("intent",""); reply.save(update_fields=["sentiment","intent"])
+    except Exception as exc:
+        classification={"recommended_action":"Review reply manually.","error":str(exc)}
     lead.status="replied"; lead.save(update_fields=["status","updated_at"])
     ActivityLog.objects.create(lead=lead,event_type="lead.reply_received",message="Reply recorded manually.",metadata={"reply_id":reply.id})
-    return Response(ReplySerializer(reply).data,status=201)
+    return Response({**ReplySerializer(reply).data,"classification":classification},status=201)
 
 class LeadViewSet(viewsets.ModelViewSet):
     queryset=Lead.objects.all().prefetch_related("analysis"); serializer_class=LeadSerializer
@@ -161,6 +168,31 @@ class LeadViewSet(viewsets.ModelViewSet):
         if new_status not in {x[0] for x in Lead.STATUS}:return Response({"detail":"Invalid lead status."},status=400)
         lead.status=new_status; lead.save(update_fields=["status","updated_at"]); ActivityLog.objects.create(lead=lead,event_type="lead.status_changed",message=f"Lead status changed to {new_status}.",metadata={"status":new_status})
         return Response(LeadSerializer(lead).data)
+
+DISCOVERY_PROFILES=[
+    {"id":"ai-automation","label":"AI & Automation","query":"current public freelance opportunities for AI products, AI agents, workflow automation, Python automation and business automation"},
+    {"id":"django-fullstack","label":"Django & Full-Stack","query":"current public freelance opportunities for Django, Django REST Framework, Python backend, React and full-stack development"},
+    {"id":"interactive-web","label":"React & Three.js","query":"current public freelance opportunities for React, Three.js, WebGL, interactive websites and 3D web development"},
+    {"id":"startup-build","label":"Startup MVPs","query":"current public freelance opportunities from startups seeking an MVP, SaaS prototype, AI MVP or full-stack product developer"},
+]
+
+@api_view(["GET"])
+def discovery_profiles(request):
+    return Response({"profiles":DISCOVERY_PROFILES})
+
+@api_view(["GET"])
+def analytics(request):
+    return Response(acquisition_metrics())
+
+@api_view(["POST"])
+def send_outreach(request,pk):
+    try: outreach=Outreach.objects.select_related("lead").get(pk=pk)
+    except Outreach.DoesNotExist: return Response({"detail":"Outreach not found."},status=404)
+    try: return Response(send_email(outreach))
+    except ValueError as exc: return Response({"detail":str(exc),"sent":False},status=400)
+    except Exception as exc:
+        ActivityLog.objects.create(lead=outreach.lead,event_type="outreach.error",message="Configured outreach provider failed.",metadata={"outreach_id":outreach.id,"error":str(exc)})
+        return Response({"detail":"Outbound provider failed.","sent":False},status=502)
 
 def dashboard(request):
     now=timezone.now(); active=Lead.objects.exclude(status="archived").filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)); last=ActivityLog.objects.filter(event_type="discovery.completed").order_by("-created_at").first()
