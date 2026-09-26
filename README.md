@@ -2,73 +2,107 @@
 
 Production-oriented AI-assisted freelance opportunity discovery, qualification, proposal drafting, follow-up and outreach management.
 
+## Security and access
+
+The API uses Django REST Framework token authentication. The health endpoint is public for hosting health checks; application data and write endpoints require authentication.
+
+Create the first account with:
+
+    cd backend
+    python manage.py createsuperuser
+
+Then sign in through the frontend. Never commit passwords, API keys, database URLs or Django secrets.
+
+API protection includes:
+- authenticated application endpoints
+- explicit AI and discovery rate limits
+- global anonymous/user throttling
+- paginated list endpoints
+- production HTTPS/security headers
+- server-side OpenAI credentials only
+
 ## Live discovery
-The primary discovery path uses the OpenAI Responses API with its hosted `web_search` tool to find current publicly available opportunities. Results are normalized into the existing Lead model and deduplicated before storage.
+
+The primary discovery path uses the OpenAI Responses API with its hosted web_search tool to find current publicly available opportunities. Results are normalized into the Lead model and deduplicated before storage.
+
+No login bypass or unauthorized scraping is used.
+
+## Pipeline
+
+Live Web Search -> Lead Extraction -> Deduplication -> PostgreSQL -> AI Qualification -> Proposal Draft -> Human Approval -> Follow-up / Reply Tracking.
+
+Lead lifecycle statuses:
+
+new -> qualified -> proposal -> contacted -> replied -> won/lost
+
+Status changes are explicit user actions. Reply tracking is manual and does not send outbound communication.
 
 ## Outreach safety
-No login bypass or unauthorized scraping. Outbound communication remains a human-approved draft workflow.
+
+Proposal approval and follow-up approval do not send external messages. The follow-up worker only moves approved follow-ups to due.
 
 ## API
-POST `/api/discovery/run/`
-```json
-{"query":"AI automation Django React freelance","source":"live"}
-```
-Use `source":"mock"` for regression tests.
 
-## Production flow
-Live Web Search → Lead Extraction → Deduplication → PostgreSQL → AI Qualification → Proposal Draft → Human Approval → Outreach/Follow-up.
+- GET /api/health/
+- POST /api/auth/login/
+- GET /api/auth/me/
+- GET /api/dashboard/
+- GET /api/leads/
+- POST /api/discovery/run/
+- POST /api/discovery/qualify/
+- GET /api/leads/qualified/
+- POST /api/leads/<id>/set_status/
+- POST /api/leads/<id>/replies/
+- GET /api/replies/
+- GET /api/followups/
+- POST /api/followups/create/
+- POST /api/followups/<id>/approve/
+- GET /api/followups/due/
+- POST /api/followups/process-due/
 
-Keep `OPENAI_API_KEY` server-side.
+List endpoints are paginated with a default page size of 50 and a maximum of 100.
 
+## Workers and monitoring
 
-## Follow-up worker
+The discovery and follow-up workers write heartbeat and error events. GET /api/health/ exposes worker status so hosting and operators can detect stale workers.
 
-Approved follow-ups are automatically moved to the `due` state when their scheduled time arrives. The worker never sends external messages.
+Discovery defaults to one cycle per hour. Follow-up processing defaults to every 60 seconds.
 
-Run one processing cycle:
+Neither worker sends external communication.
 
-```bash
-cd backend
-python manage.py process_due_followups
-```
+## Frontend
 
-Run continuously:
-
-```bash
-cd backend
-python manage.py process_due_followups --loop
-```
-
-The loop interval defaults to `FOLLOWUP_WORKER_INTERVAL=60` seconds and can be changed through the environment. The processor is idempotent, so repeated cycles do not duplicate the due transition or activity log.
-
-The intended lifecycle is:
-
-`Draft → Approved → Due → Ready for Action`
-
-External outreach remains a separate, human-controlled step. The worker does not send email, platform messages, or other outbound communication.
-
-## Automated discovery worker
-
-The discovery worker runs live public-web discovery, deduplicates results, and automatically qualifies previously unanalyzed new leads using the configured GPT-4o-mini qualification model. It does not send outbound messages.
-
-Run one cycle:
-
-    cd backend
-    python manage.py run_discovery_cycle
-
-Run continuously:
-
-    cd backend
-    python manage.py run_discovery_cycle --loop
-
-The loop interval defaults to `DISCOVERY_WORKER_INTERVAL=3600` seconds and is configurable through the environment. Each cycle records a `discovery.completed` activity event with discovered, created, duplicate, analyzed, and qualified counts. The dashboard exposes the latest discovery timestamp and result summary.
-
-Windows launcher: `start-discovery-worker.bat`.
-
-Human approval remains required for proposals and follow-ups, and external outreach is not sent by the worker.
+The React/Vite frontend includes:
+- authenticated sign-in
+- live discovery
+- qualification and proposal workflow
+- lead lifecycle controls
+- reply tracking
+- follow-up scheduling and approval
+- due-action queue
+- worker health visibility
+- responsive production UI
 
 ## Production deployment
 
-The backend supports PostgreSQL through `DATABASE_URL`, production HTTPS settings, and a Gunicorn WSGI process. `render.yaml` defines the API web service and the separate discovery worker. Configure secrets and environment-specific values in the hosting platform before deploying; do not commit real credentials.
+The backend supports PostgreSQL through DATABASE_URL, production HTTPS settings, and Gunicorn. render.yaml defines the API, discovery worker, follow-up worker and frontend static site.
 
-Required production variables include `DJANGO_SECRET_KEY`, `DATABASE_URL`, `OPENAI_API_KEY`, `ALLOWED_HOSTS`, and `CORS_ALLOWED_ORIGINS`. The discovery and follow-up workers remain separate from the API process. External outreach is not enabled by these services.
+Required hosting values include DJANGO_SECRET_KEY, DATABASE_URL, OPENAI_API_KEY, ALLOWED_HOSTS, CORS_ALLOWED_ORIGINS, and frontend VITE_API_BASE_URL.
+
+Configure these in the hosting platform; do not commit real credentials.
+
+## Development checks
+
+Backend:
+
+    cd backend
+    pip install -r requirements.txt
+    python manage.py test
+
+Frontend:
+
+    cd frontend
+    npm install
+    npm run build
+
+GitHub Actions runs both backend tests and the frontend production build on pushes and pull requests to main.
