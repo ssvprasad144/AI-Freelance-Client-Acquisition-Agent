@@ -65,6 +65,7 @@ class PublicCrawlerSafetyTests(TestCase):
         ]; from .discovery.live_provider import discover_live
         with patch("leads.discovery.live_provider.settings.OPENAI_API_KEY","test-key"),patch("leads.discovery.live_provider.settings.DISCOVERY_MODEL","gpt-4o-mini"),patch("leads.discovery.live_provider.settings.DISCOVERY_SEARCH_CONTEXT_SIZE","medium"),patch("leads.discovery.live_provider.settings.DISCOVERY_MAX_RESULTS",5): result=discover_live("Django freelance")
         self.assertEqual(len(result["leads"]),1)
+        self.assertEqual(client.return_value.responses.create.call_count,2)
 
 class DiscoveryOptimizationTests(APITestBase):
     @patch("leads.discovery_cycle.DiscoveryService.discover")
