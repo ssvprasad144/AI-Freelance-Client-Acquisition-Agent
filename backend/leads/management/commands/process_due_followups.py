@@ -1,12 +1,11 @@
 import time
 from django.conf import settings
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 from leads.followup_service import process_due_followups
 from leads.models import ActivityLog
 
 class Command(BaseCommand):
-    help="Process approved follow-ups that have reached their scheduled time."
+    help="Process approved follow-ups that have reached their scheduled time; use --loop only for local/worker execution."
     def add_arguments(self,parser):
         parser.add_argument("--loop",action="store_true"); parser.add_argument("--interval",type=int,default=settings.FOLLOWUP_WORKER_INTERVAL)
     def handle(self,*args,**options):
