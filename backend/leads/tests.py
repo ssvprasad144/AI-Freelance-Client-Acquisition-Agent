@@ -98,3 +98,27 @@ class AcquisitionEngineTests(APITestBase):
         response=self.client.post(f"/api/followups/{followup.id}/send/",format="json")
         self.assertEqual(response.status_code,400)
         followup.refresh_from_db(); self.assertEqual(followup.status,"due")
+
+
+class PublicCrawlerSafetyTests(TestCase):
+    def test_private_hosts_are_blocked(self):
+        from .discovery.public_crawler import CrawlError, _validate_url
+        with self.assertRaises(CrawlError): _validate_url("http://127.0.0.1/admin")
+        with self.assertRaises(CrawlError): _validate_url("http://10.0.0.1/internal")
+        with self.assertRaises(CrawlError): _validate_url("http://localhost:8000/")
+
+    def test_credential_urls_are_blocked(self):
+        from .discovery.public_crawler import CrawlError, _validate_url
+        with self.assertRaises(CrawlError): _validate_url("https://user:password@example.com/jobs")
+
+    @patch("leads.discovery.live_provider.enrich_leads")
+    @patch("leads.discovery.live_provider.OpenAI")
+    def test_live_discovery_enriches_search_results(self,client,enrich):
+        response=client.return_value.responses.create.return_value
+        response.output_text='{"leads":[{"title":"Django role","company":"Example","description":"Build Django app","source":"web_search","source_url":"https://example.com/jobs/1","lead_type":"freelance","budget_text":"","technologies":["Django"],"contact_info":{}}]}'
+        enrich.side_effect=lambda leads: leads
+        from .discovery.live_provider import discover_live
+        with patch("leads.discovery.live_provider.settings.OPENAI_API_KEY","test-key"), patch("leads.discovery.live_provider.settings.DISCOVERY_MODEL","gpt-4o-mini"), patch("leads.discovery.live_provider.settings.DISCOVERY_SEARCH_CONTEXT_SIZE","medium"), patch("leads.discovery.live_provider.settings.DISCOVERY_MAX_RESULTS",5), patch("leads.discovery.live_provider.settings.CRAWLER_ENABLED",True):
+            result=discover_live("Django freelance")
+        self.assertEqual(len(result["leads"]),1)
+        enrich.assert_called_once()
