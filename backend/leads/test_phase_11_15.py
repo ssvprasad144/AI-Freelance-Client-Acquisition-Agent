@@ -33,8 +33,7 @@ class Phase1115Tests(TestCase):
 
     def test_meeting_api_and_learning(self):
         client,contact=sync_lead_client(self.lead)
-        api=APIClient()
-        response=api.post("/api/meetings/create/",{"lead_id":self.lead.id,"status":"scheduled","scheduled_at":(timezone.now()+timedelta(days=1)).isoformat(),"meeting_url":"https://meet.example.com/1"},format="json")
+        response=self.client.post("/api/meetings/create/",{"lead_id":self.lead.id,"status":"scheduled","scheduled_at":(timezone.now()+timedelta(days=1)).isoformat(),"meeting_url":"https://meet.example.com/1"},format="json")
         self.assertEqual(response.status_code,201)
         self.lead.status="won"; self.lead.save(update_fields=["status","updated_at"])
         stats=refresh_learning()
