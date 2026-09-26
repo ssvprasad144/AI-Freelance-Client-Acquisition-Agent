@@ -6,6 +6,7 @@ from django.utils import timezone
 from openai import OpenAI
 from .knowledge import PROFILE
 from .models import ActivityLog, Lead, Outreach, Reply
+from .followup_intelligence import cancel_if_stopped, schedule_next_step
 
 REPLY_PROMPT="""Classify a client reply using only the supplied text.
 Return JSON with keys: sentiment, intent, urgency, confidence, extracted_questions, recommended_action, suggested_response, next_action.
@@ -98,5 +99,6 @@ def send_followup(followup):
         if settings.SMTP_USERNAME: server.login(settings.SMTP_USERNAME,settings.SMTP_PASSWORD)
         server.send_message(message)
     followup.status="sent"; followup.sent_at=timezone.now(); followup.save(update_fields=["status","sent_at"])
-    ActivityLog.objects.create(lead=followup.lead,event_type="followup.sent",message="Approved due follow-up sent through configured email provider.",metadata={"followup_id":followup.id})
-    return {"sent":True,"followup_id":followup.id}
+    next_followup=schedule_next_step(followup)
+    ActivityLog.objects.create(lead=followup.lead,event_type="followup.sent",message="Approved due follow-up sent through configured email provider.",metadata={"followup_id":followup.id,"next_followup_id":next_followup.id if next_followup else None})
+    return {"sent":True,"followup_id":followup.id,"next_followup_id":next_followup.id if next_followup else None}
