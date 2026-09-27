@@ -128,3 +128,33 @@ class DataIntegrityAuditTests(TestCase):
         contact=Contact.objects.create(client=client,name="Contact")
         lead=Lead.objects.create(owner=owner,title="Bad relation",description="X",source_url="https://example.com/x",contact=contact)
         self.assertIn("contact_without_client",validate_pipeline_invariants(lead))
+
+class OutboundAmbiguousDeliveryTests(TestCase):
+    def test_stale_sending_claims_are_not_automatically_retried(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        from .models import Outreach, FollowUp
+        owner=get_user_model().objects.create_user(username="outbound-owner",password="pass12345")
+        lead=Lead.objects.create(owner=owner,title="Outbound safety lead",description="Test",source_url="https://example.com/outbound",contact_info={"email":"client@example.com"})
+        old=timezone.now()-timedelta(minutes=45)
+        outreach=Outreach.objects.create(lead=lead,channel="email",medium="email",message="Test outreach",status="sending")
+        outreach.updated_at=old; outreach.save(update_fields=["updated_at"])
+        followup=FollowUp.objects.create(lead=lead,scheduled_at=timezone.now(),message="Test follow-up",status="sending")
+        followup.updated_at=old; followup.save(update_fields=["updated_at"])
+        from .followup_service import recover_stale_outbound_claims
+        result=recover_stale_outbound_claims(max_age_minutes=30)
+        outreach.refresh_from_db(); followup.refresh_from_db()
+        self.assertEqual(outreach.status,"send_uncertain")
+        self.assertEqual(followup.status,"send_uncertain")
+        self.assertEqual(result["outreach"],1)
+        self.assertEqual(result["followups"],1)
+
+    def test_ambiguous_delivery_cannot_be_sent_again(self):
+        from .models import Outreach, FollowUp
+        from .acquisition import send_email, send_followup
+        owner=get_user_model().objects.create_user(username="outbound-block",password="pass12345")
+        lead=Lead.objects.create(owner=owner,title="Ambiguous lead",description="Test",source_url="https://example.com/ambiguous",contact_info={"email":"client@example.com"})
+        outreach=Outreach.objects.create(lead=lead,channel="email",medium="email",message="Test",status="send_uncertain")
+        followup=FollowUp.objects.create(lead=lead,scheduled_at=timezone.now(),message="Test",status="send_uncertain")
+        with self.assertRaises(ValueError): send_email(outreach)
+        with self.assertRaises(ValueError): send_followup(followup)
