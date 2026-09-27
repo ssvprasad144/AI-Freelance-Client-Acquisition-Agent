@@ -182,3 +182,13 @@ class WebSearchCostV2Tests(APITestBase):
         from .discovery.profiles import preferred_search_window_open
         with patch("leads.discovery.profiles.settings.DISCOVERY_PREFERRED_HOURS_ENABLED",True), patch("leads.discovery.profiles.timezone.localtime",return_value=datetime(2026,1,1,3,0,tzinfo=timezone.get_current_timezone())):
             self.assertFalse(preferred_search_window_open())
+
+class FollowUpClaimTests(APITestBase):
+    def test_send_claim_blocks_concurrent_second_request(self):
+        followup=FollowUp.objects.create(lead=self.lead,scheduled_at=timezone.now()-timedelta(minutes=1),message="Follow up now.",status="due")
+        with patch("leads.views.send_followup_email", return_value={"sent":True,"followup_id":followup.id}) as sender:
+            first=self.client.post(f"/api/followups/{followup.id}/send/")
+            second=self.client.post(f"/api/followups/{followup.id}/send/")
+        self.assertEqual(first.status_code,200)
+        self.assertEqual(second.status_code,409)
+        sender.assert_called_once()
