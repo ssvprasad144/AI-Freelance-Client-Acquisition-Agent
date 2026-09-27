@@ -1,7 +1,9 @@
 from django.db import models
+from django.conf import settings
 from django.utils import timezone
 
 class Lead(models.Model):
+    owner=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,null=True,blank=True,related_name="acquisition_leads",db_index=True)
     STATUS=[("new","New"),("qualified","Qualified"),("proposal","Proposal"),("contacted","Contacted"),("replied","Replied"),("won","Won"),("lost","Lost"),("archived","Archived")]
     TYPE=[("freelance","Freelance"),("direct","Direct"),("startup","Startup"),("other","Other")]
     title=models.CharField(max_length=255); normalized_title=models.CharField(max_length=255,blank=True,db_index=True); normalized_url=models.CharField(max_length=500,blank=True,db_index=True)
@@ -156,16 +158,19 @@ class DiscoveryDomainStat(models.Model):
 
 
 class Client(models.Model):
+    owner=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,null=True,blank=True,related_name="acquisition_clients",db_index=True)
     STATUS=[("active","Active"),("prospect","Prospect"),("won","Won"),("lost","Lost"),("archived","Archived")]
     company=models.CharField(max_length=255)
-    normalized_company=models.CharField(max_length=255,unique=True,db_index=True)
+    normalized_company=models.CharField(max_length=255,db_index=True)
     domain=models.CharField(max_length=255,blank=True,db_index=True)
     industry=models.CharField(max_length=120,blank=True)
     notes=models.TextField(blank=True)
     status=models.CharField(max_length=20,choices=STATUS,default="prospect",db_index=True)
     created_at=models.DateTimeField(auto_now_add=True)
     updated_at=models.DateTimeField(auto_now=True)
-    class Meta: ordering=["-updated_at"]
+    class Meta:
+        ordering=["-updated_at"]
+        constraints=[models.UniqueConstraint(fields=["owner","normalized_company"],name="unique_client_owner_company")]
     def __str__(self): return self.company
 
 class Contact(models.Model):

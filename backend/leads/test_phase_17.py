@@ -10,7 +10,7 @@ class Phase17Tests(TestCase):
     """Regression coverage for safe, context-aware multichannel outreach (CI)."""
     def setUp(self):
         self.api=APIClient(); user=get_user_model().objects.create_user(username="p17",password="pass123"); self.api.force_authenticate(user)
-        self.lead=Lead.objects.create(title="Django automation",description="Build automation",status="qualified",action_url="https://example.com/apply",contact_info={"email":"a@example.com","name":"Alex"})
+        self.lead=Lead.objects.create(owner=user,title="Django automation",description="Build automation",status="qualified",action_url="https://example.com/apply",contact_info={"email":"a@example.com","name":"Alex"})
     def test_personalized_plan_and_channel_safety(self):
         plan=create_plan(self.lead,"email","A")
         self.assertTrue(plan.automatic); self.assertIn("Alex",plan.message)

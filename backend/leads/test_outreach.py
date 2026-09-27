@@ -12,7 +12,7 @@ class SourceAwareOutreachTests(TestCase):
         self.client.force_authenticate(self.user)
 
     def make_lead(self, source, **kwargs):
-        return Lead.objects.create(
+        return Lead.objects.create(owner=self.user,
             title="Django developer needed",
             description="Build a Django API and dashboard.",
             source=source,

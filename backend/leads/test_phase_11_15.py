@@ -10,9 +10,9 @@ from .learning import refresh_learning
 class Phase1115Tests(TestCase):
     def setUp(self):
         self.client=APIClient()
-        user=get_user_model().objects.create_user(username="phase1115",password="pass1234")
-        self.client.force_authenticate(user)
-        self.lead=Lead.objects.create(
+        self.user=get_user_model().objects.create_user(username="phase1115",password="pass1234")
+        self.client.force_authenticate(self.user)
+        self.lead=Lead.objects.create(owner=self.user,
             title="AI automation dashboard",description="Build a Django React AI automation dashboard.",
             company="Acme Labs",source="linkedin",source_url="https://linkedin.com/jobs/view/1",
             action_url="https://linkedin.com/jobs/view/1",contact_info={"email":"client@example.com","name":"Client","profile_url":"https://linkedin.com/in/client"}
@@ -20,7 +20,7 @@ class Phase1115Tests(TestCase):
 
     def test_client_memory_deduplicates_company(self):
         client1,contact1=sync_lead_client(self.lead)
-        second=Lead.objects.create(title="Second opportunity",description="Django work",company="ACME LABS",source="reddit",source_url="https://reddit.com/r/test/1",contact_info={"email":"other@example.com"})
+        second=Lead.objects.create(owner=self.user,title="Second opportunity",description="Django work",company="ACME LABS",source="reddit",source_url="https://reddit.com/r/test/1",contact_info={"email":"other@example.com"})
         client2,contact2=sync_lead_client(second)
         self.assertEqual(client1.id,client2.id)
         self.assertEqual(Client.objects.count(),1)
