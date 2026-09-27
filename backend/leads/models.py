@@ -255,7 +255,7 @@ class LearningStat(models.Model):
     reward=models.FloatField(default=0)
     updated_at=models.DateTimeField(auto_now=True)
     class Meta:
-        constraints=[models.UniqueConstraint(fields=["dimension","key"],name="unique_learning_dimension_key")]
+        constraints=[models.UniqueConstraint(fields=["owner","dimension","key"],name="unique_learning_owner_dimension_key")]
         ordering=["-reward","-updated_at"]
 
 
