@@ -19,7 +19,7 @@ def sync_lead_client(lead):
     if not company:
         return None, None
     normalized=normalize_company(company)
-    client,created=Client.objects.get_or_create(normalized_company=normalized,defaults={"company":company,"domain":extract_domain(lead)})
+    client,created=Client.objects.get_or_create(owner=lead.owner,normalized_company=normalized,defaults={"company":company,"domain":extract_domain(lead)})
     if not created and not client.domain and extract_domain(lead):
         client.domain=extract_domain(lead); client.save(update_fields=["domain","updated_at"])
     lead.client=client
