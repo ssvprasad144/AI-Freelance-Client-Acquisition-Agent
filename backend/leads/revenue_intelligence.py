@@ -44,8 +44,11 @@ def upsert_revenue(lead,data):
         "crawler_cost":float(data.get("crawler_cost",auto["crawler_cost"]) or 0),"outreach_cost":float(data.get("outreach_cost",auto["outreach_cost"]) or 0),**attr})
     obj.expected_value=expected_value(obj); obj.save(update_fields=["expected_value","updated_at"]); return obj
 
-def revenue_metrics():
-    records=list(RevenueRecord.objects.select_related("lead").all()); reporting=settings.REVENUE_DEFAULT_CURRENCY
+def revenue_metrics(owner=None):
+    queryset=RevenueRecord.objects.select_related("lead")
+    if owner is not None:
+        queryset=queryset.filter(lead__owner=owner)
+    records=list(queryset); reporting=settings.REVENUE_DEFAULT_CURRENCY
     total=sum(to_reporting(r.won_value,r.currency) for r in records); expected=sum(to_reporting(r.expected_value,r.currency) for r in records)
     cost_fields=["search_cost","ai_cost","crawler_cost","outreach_cost"]
     costs={k:sum(to_reporting(getattr(r,k),r.currency) for r in records) for k in cost_fields}; total_cost=sum(costs.values())
@@ -71,5 +74,7 @@ def refresh_revenue_learning():
         stat.save(update_fields=["reward","updated_at"])
     return metrics
 
-def optimization_report():
+def optimization_report(owner=None):
+    # LearningStat is intentionally global for the current single-owner deployment.
+    # Revenue metrics themselves are owner-scoped at the lead boundary.
     return [{"dimension":s.dimension,"key":s.key,"attempts":s.attempts,"qualified":s.qualified,"proposals":s.proposals,"sent":s.sent,"replies":s.replies,"meetings":s.meetings,"wins":s.wins,"losses":s.losses,"reward":round(s.reward,2),"win_rate":round(s.wins/max(s.attempts,1)*100,2)} for s in LearningStat.objects.order_by("-reward","-attempts")[:100]]
