@@ -7,6 +7,8 @@ from collections import defaultdict
 from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, build_opener, HTTPRedirectHandler
+from urllib.error import HTTPError
+from urllib.robotparser import RobotFileParser
 from django.conf import settings
 
 
@@ -148,6 +150,14 @@ class PublicWebCrawler:
         opener = build_opener(_NoRedirect())
         try:
             response = opener.open(req, timeout=settings.CRAWLER_TIMEOUT_SECONDS)
+        except HTTPError as exc:
+            if 300 <= exc.code < 400:
+                if redirects >= settings.CRAWLER_MAX_REDIRECTS:
+                    raise CrawlError("Redirect limit reached.") from exc
+                target = urljoin(url, exc.headers.get("Location", ""))
+                _validate_url(target)
+                return self.fetch(target, redirects + 1)
+            raise CrawlError(f"Fetch failed: {type(exc).__name__}") from exc
         except Exception as exc:
             raise CrawlError(f"Fetch failed: {type(exc).__name__}") from exc
         with response:

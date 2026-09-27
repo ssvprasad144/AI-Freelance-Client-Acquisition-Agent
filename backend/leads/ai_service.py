@@ -73,11 +73,29 @@ def _validated_analysis(data):
     if not isinstance(data,dict) or any(k not in data for k in required):
         raise ValueError("AI qualification response is missing required fields.")
     for key,kind in required.items():
-        if not isinstance(data[key],kind):
+        if kind is int and (not isinstance(data[key],int) or isinstance(data[key],bool)):
             raise ValueError(f"AI qualification field {key} has an invalid type.")
-    data["match_score"]=max(0,min(100,data["match_score"]))
-    data["confidence"]=max(0,min(100,data["confidence"]))
-    return data
+        if kind is bool and not isinstance(data[key],bool):
+            raise ValueError(f"AI qualification field {key} has an invalid type.")
+        if kind not in {int,bool} and not isinstance(data[key],kind):
+            raise ValueError(f"AI qualification field {key} has an invalid type.")
+    for key in ("match_score","confidence"):
+        if not 0 <= data[key] <= 100:
+            raise ValueError(f"AI qualification field {key} must be between 0 and 100.")
+    allowed_services={"AI Products","Business Automation","Full-Stack Development","Interactive Web","Needs review"}
+    if data["service_match"] not in allowed_services:
+        raise ValueError("AI qualification returned an unknown service category.")
+    for key,maximum in (("requirements",20),("pain_points",20),("matching_projects",8)):
+        values=data[key]
+        if len(values)>maximum or any(not isinstance(value,str) or not value.strip() or len(value)>1000 for value in values):
+            raise ValueError(f"AI qualification field {key} has invalid values.")
+    project_names={item["name"] for item in settings.FREELANCE_SEARCH_PROFILE["projects"]}
+    if any(project not in project_names for project in data["matching_projects"]):
+        raise ValueError("AI qualification referenced a project absent from the developer profile.")
+    if len(data["recommended_approach"])>4000:
+        raise ValueError("AI qualification approach is too large.")
+    # Drop unexpected keys; persisted qualification data has a fixed application schema.
+    return {key:data[key] for key in required}
 
 
 def _validated_proposal(text):

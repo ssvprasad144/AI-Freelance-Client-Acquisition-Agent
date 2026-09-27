@@ -32,6 +32,8 @@ Rules:
 - Do not claim a page is available unless the search result supports it.
 - Do not target or bypass login-only/private content.
 - Prefer official job/freelance listings and publicly accessible pages.
+- Include evidence rows only when an exact excerpt and its URL are present in the search findings.
+- Do not treat a model confidence estimate as verification; unsupported fields may have no evidence row.
 - Return an empty list when there are no suitable current results.
 """
 
@@ -95,6 +97,10 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
                         "properties": {
                             "title": {"type": "string"},
                             "company": {"type": "string"},
+                            "company_website": {"type": "string"},
+                            "company_description": {"type": "string"},
+                            "location": {"type": "string"},
+                            "hiring_signal": {"type": "string"},
                             "description": {"type": "string"},
                             "source": {"type": "string"},
                             "source_url": {"type": "string"},
@@ -114,15 +120,33 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
                                     "name": {"type": "string"},
                                     "email": {"type": "string"},
                                     "phone": {"type": "string"},
+                                    "profile_url": {"type": "string"},
+                                    "role": {"type": "string"},
                                 },
-                                "required": ["name", "email", "phone"],
+                                "required": ["name", "email", "phone", "profile_url", "role"],
                                 "additionalProperties": False,
+                            },
+                            "posted_at": {"type": "string"},
+                            "expires_at": {"type": "string"},
+                            "evidence": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "field": {"type": "string"},
+                                        "value": {"type": "string"},
+                                        "source_url": {"type": "string"},
+                                        "excerpt": {"type": "string"},
+                                    },
+                                    "required": ["field", "value", "source_url", "excerpt"],
+                                    "additionalProperties": False,
+                                },
                             },
                         },
                         "required": [
-                            "title", "company", "description", "source",
+                            "title", "company", "company_website", "company_description", "location", "hiring_signal", "description", "source",
                             "source_url", "action_url", "lead_type",
-                            "budget_text", "technologies", "contact_info",
+                            "budget_text", "technologies", "contact_info", "posted_at", "expires_at", "evidence",
                         ],
                         "additionalProperties": False,
                     },
@@ -175,7 +199,8 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
 
     cleaned = []
     for lead in leads:
-        if not isinstance(lead, dict) or not lead.get("title") or not lead.get("description") or not lead.get("source_url"):
+        if not isinstance(lead, dict):
+            cleaned.append(lead)
             continue
         lead["source"] = lead.get("source") or "web_search"
         lead["lead_type"] = lead.get("lead_type") or "freelance"
@@ -186,4 +211,4 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
         else:
             lead.pop("action_url", None)
         cleaned.append(lead)
-    return {"leads": cleaned, "model": settings.DISCOVERY_MODEL}
+        return {"leads": cleaned, "model": settings.DISCOVERY_MODEL, "search_findings": search_text}

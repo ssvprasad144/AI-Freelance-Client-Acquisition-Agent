@@ -27,9 +27,13 @@ class Phase16Tests(TestCase):
 
     def test_ai_output_validation(self):
         data={"relevant":True,"match_score":101,"service_match":"AI","requirements":[],"pain_points":[],"recommended_approach":"Scope first.","matching_projects":[],"confidence":-4}
+        with self.assertRaises(ValueError): _validated_analysis(data)
+        data.update(match_score=100,service_match="AI Products",confidence=0)
         validated=_validated_analysis(data)
         self.assertEqual(validated["match_score"],100)
         self.assertEqual(validated["confidence"],0)
+        data["service_match"]="unknown service"
+        with self.assertRaises(ValueError): _validated_analysis(data)
         with self.assertRaises(ValueError): _validated_analysis({"relevant":True})
         self.assertEqual(_validated_proposal("  proposal  "),"proposal")
         with self.assertRaises(ValueError): _validated_proposal("")

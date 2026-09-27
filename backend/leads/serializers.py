@@ -1,12 +1,31 @@
 from rest_framework import serializers
 from .models import ActivityLog,FollowUp,FollowUpSequence,Lead,LeadAnalysis,Outreach,Proposal,ProposalVersion,Reply,Client,Contact,Conversation,ConversationMessage,ClientIntelligence,Meeting,AcquisitionEvent,LearningStat,AcquisitionOpportunity,OutreachPlan,RevenueRecord
+from .data_quality import normalize_url, validate_discovered_email
 
 class LeadAnalysisSerializer(serializers.ModelSerializer):
     class Meta: model=LeadAnalysis; fields="__all__"
 
 class LeadSerializer(serializers.ModelSerializer):
     analysis=LeadAnalysisSerializer(read_only=True)
+    evidence=serializers.PrimaryKeyRelatedField(many=True,read_only=True)
     class Meta: model=Lead; fields="__all__"
+    def validate_source_url(self,value): return normalize_url(value) if value else value
+    def validate_action_url(self,value): return normalize_url(value) if value else value
+    def validate_company_website(self,value): return normalize_url(value) if value else value
+    def validate(self,attrs):
+        info=attrs.get("contact_info")
+        if info is not None:
+            if not isinstance(info,dict): raise serializers.ValidationError({"contact_info":"Must be an object."})
+            info=dict(info)
+            if info.get("email"):
+                try: info["email"]=validate_discovered_email(info["email"])
+                except ValueError as exc: raise serializers.ValidationError({"contact_info":{"email":str(exc)}}) from exc
+            for key in ("profile_url","linkedin"):
+                if info.get(key):
+                    try: info[key]=normalize_url(info[key])
+                    except ValueError as exc: raise serializers.ValidationError({"contact_info":{key:str(exc)}}) from exc
+            attrs["contact_info"]=info
+        return attrs
 
 class OutreachSerializer(serializers.ModelSerializer):
     lead_title=serializers.CharField(source="lead.title",read_only=True)

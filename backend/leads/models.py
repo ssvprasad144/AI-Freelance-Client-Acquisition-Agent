@@ -1,19 +1,59 @@
+import re
+
 from django.db import models
+from django.db.models.functions import Lower
 from django.utils import timezone
 
 class Lead(models.Model):
     STATUS=[("new","New"),("qualified","Qualified"),("proposal","Proposal"),("contacted","Contacted"),("replied","Replied"),("won","Won"),("lost","Lost"),("archived","Archived")]
     TYPE=[("freelance","Freelance"),("direct","Direct"),("startup","Startup"),("other","Other")]
-    title=models.CharField(max_length=255); normalized_title=models.CharField(max_length=255,blank=True,db_index=True); normalized_url=models.CharField(max_length=500,blank=True,db_index=True)
-    company=models.CharField(max_length=255,blank=True); description=models.TextField(); source=models.CharField(max_length=100,default="mock"); source_url=models.URLField(blank=True); action_url=models.URLField(blank=True)
+    title=models.CharField(max_length=255); normalized_title=models.CharField(max_length=255,blank=True,db_index=True); normalized_url=models.CharField(max_length=2048,blank=True,db_index=True)
+    company=models.CharField(max_length=255,blank=True); description=models.TextField(); source=models.CharField(max_length=100,default="mock"); source_url=models.URLField(max_length=2048,blank=True); action_url=models.URLField(max_length=2048,blank=True)
+    company_website=models.URLField(max_length=2048,blank=True); location=models.CharField(max_length=255,blank=True); company_description=models.TextField(blank=True); hiring_signal=models.TextField(blank=True)
     lead_type=models.CharField(max_length=30,choices=TYPE,default="freelance"); budget_text=models.CharField(max_length=255,blank=True)
     technologies=models.JSONField(default=list,blank=True); contact_info=models.JSONField(default=dict,blank=True); status=models.CharField(max_length=30,choices=STATUS,default="new")
     client=models.ForeignKey("Client",on_delete=models.SET_NULL,null=True,blank=True,related_name="leads"); contact=models.ForeignKey("Contact",on_delete=models.SET_NULL,null=True,blank=True,related_name="leads")
     discovery_profile=models.CharField(max_length=100,blank=True,db_index=True); discovery_strategy=models.CharField(max_length=100,blank=True,db_index=True); discovery_query=models.CharField(max_length=1000,blank=True)
-    discovered_at=models.DateTimeField(null=True,blank=True); posted_at=models.DateTimeField(null=True,blank=True); expires_at=models.DateTimeField(null=True,blank=True); last_verified_at=models.DateTimeField(null=True,blank=True)
+    discovered_at=models.DateTimeField(null=True,blank=True); posted_at=models.DateTimeField(null=True,blank=True); expires_at=models.DateTimeField(null=True,blank=True); last_checked_at=models.DateTimeField(null=True,blank=True); last_verified_at=models.DateTimeField(null=True,blank=True)
     created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True)
-    class Meta: ordering=["-created_at"]
+    class Meta:
+        ordering=["-created_at"]
+        constraints=[models.UniqueConstraint(fields=["normalized_url"],condition=~models.Q(normalized_url=""),name="unique_lead_normalized_url")]
     def __str__(self): return self.title
+
+    def save(self,*args,**kwargs):
+        # Keep the application-level lookup identity aligned with the database guard.
+        if self.source_url:
+            from .data_quality import normalize_url
+            self.normalized_url=normalize_url(self.source_url)
+        if self.title:
+            self.normalized_title=" ".join(re.sub(r"[^a-z0-9 ]"," ",self.title.lower()).split())
+        update_fields=kwargs.get("update_fields")
+        if update_fields is not None:
+            fields=set(update_fields)
+            if "source_url" in fields: fields.add("normalized_url")
+            if "title" in fields: fields.add("normalized_title")
+            kwargs["update_fields"]=fields
+        super().save(*args,**kwargs)
+
+
+class LeadEvidence(models.Model):
+    ORIGINS=[("extracted","Extracted"),("ai_inferred","AI inferred"),("crawler","Retrieved page")]
+    VALIDATION=[("pending","Pending"),("valid","Valid format"),("invalid","Invalid format")]
+    lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="evidence")
+    field_name=models.CharField(max_length=80,db_index=True)
+    value=models.TextField()
+    evidence_hash=models.CharField(max_length=64,db_index=True)
+    source_url=models.URLField(max_length=2048,blank=True)
+    excerpt=models.TextField(blank=True)
+    origin=models.CharField(max_length=20,choices=ORIGINS,default="extracted")
+    validation_status=models.CharField(max_length=20,choices=VALIDATION,default="pending")
+    source_supported=models.BooleanField(default=False,db_index=True)
+    observed_at=models.DateTimeField(default=timezone.now)
+    metadata=models.JSONField(default=dict,blank=True)
+    class Meta:
+        ordering=["field_name","-observed_at"]
+        constraints=[models.UniqueConstraint(fields=["lead","evidence_hash"],name="unique_lead_field_evidence")]
 
 class LeadAnalysis(models.Model):
     lead=models.OneToOneField(Lead,on_delete=models.CASCADE,related_name="analysis"); relevant=models.BooleanField(default=False); match_score=models.PositiveSmallIntegerField(default=0)
@@ -97,6 +137,7 @@ class DiscoveryQueryCache(models.Model):
     query_family=models.CharField(max_length=120,default="general",db_index=True)
     query_signature=models.CharField(max_length=64,default="",db_index=True)
     result_payload=models.JSONField(default=list,blank=True)
+    search_findings=models.TextField(blank=True)
     source_domains=models.JSONField(default=list,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)
     updated_at=models.DateTimeField(auto_now=True)
@@ -172,11 +213,29 @@ class Contact(models.Model):
     client=models.ForeignKey(Client,on_delete=models.CASCADE,related_name="contacts")
     name=models.CharField(max_length=255,blank=True)
     email=models.EmailField(blank=True)
-    profile_url=models.URLField(blank=True)
+    normalized_email=models.CharField(max_length=254,blank=True,db_index=True)
+    profile_url=models.URLField(max_length=2048,blank=True)
+    normalized_profile_url=models.CharField(max_length=500,blank=True,db_index=True)
     role=models.CharField(max_length=120,blank=True)
     metadata=models.JSONField(default=dict,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)
     updated_at=models.DateTimeField(auto_now=True)
+    class Meta:
+        constraints=[
+            models.UniqueConstraint(fields=["client","normalized_email"],condition=~models.Q(normalized_email=""),name="unique_contact_email_per_client"),
+            models.UniqueConstraint(fields=["client","normalized_profile_url"],condition=~models.Q(normalized_profile_url=""),name="unique_contact_profile_per_client"),
+        ]
+
+    def save(self,*args,**kwargs):
+        self.email=(self.email or "").strip().casefold()
+        self.normalized_email=self.email
+        self.normalized_profile_url=(self.profile_url or "").strip().rstrip("/").casefold()
+        if kwargs.get("update_fields") is not None:
+            fields=set(kwargs["update_fields"])
+            if "email" in fields: fields.add("normalized_email")
+            if "profile_url" in fields: fields.add("normalized_profile_url")
+            kwargs["update_fields"]=fields
+        super().save(*args,**kwargs)
 
 class Conversation(models.Model):
     STATUS=[("open","Open"),("waiting","Waiting"),("closed","Closed")]
