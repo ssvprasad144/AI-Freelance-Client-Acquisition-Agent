@@ -24,6 +24,7 @@ def record_meeting_event(meeting,event_type):
         )
 
 def apply_meeting_status(meeting,new_status):
+    validate_meeting_transition(meeting,new_status)
     previous_status=None
     if meeting.pk:
         previous_status=Meeting.objects.filter(pk=meeting.pk).values_list("status",flat=True).first()
@@ -35,3 +36,22 @@ def apply_meeting_status(meeting,new_status):
     if new_status != previous_status and new_status in mapping:
         record_meeting_event(meeting,mapping[new_status])
     return meeting
+
+
+VALID_MEETING_TRANSITIONS={
+    "requested":{"requested","scheduled","cancelled","no_show"},
+    "scheduled":{"scheduled","completed","cancelled","no_show"},
+    "completed":{"completed"},
+    "cancelled":{"cancelled"},
+    "no_show":{"no_show"},
+}
+
+def validate_meeting_transition(meeting,new_status):
+    current=meeting.status
+    if new_status not in dict(Meeting.STATUS):
+        raise ValueError("Invalid meeting status.")
+    if new_status not in VALID_MEETING_TRANSITIONS.get(current,set()):
+        raise ValueError(f"Invalid meeting transition: {current} -> {new_status}.")
+    if new_status=="scheduled" and not meeting.scheduled_at:
+        raise ValueError("A scheduled meeting requires scheduled_at.")
+    return True
