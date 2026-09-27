@@ -202,3 +202,24 @@ class SingleUserWorkspaceTests(TestCase):
         response=client.get(f"/api/leads/{lead.id}/")
         self.assertEqual(response.status_code,200)
         self.assertEqual(response.data["id"],lead.id)
+
+class SingleUserEndToEndSafetyTests(TestCase):
+    def setUp(self):
+        self.user=get_user_model().objects.create_user(username="owner",password="pass12345")
+        self.client=APIClient(); self.client.force_authenticate(self.user)
+        self.lead=Lead.objects.create(owner=self.user,title="Automation Lead",description="Build automation",source_url="https://example.com/jobs/1")
+
+    def test_single_user_workspace_can_access_all_acquisition_leads(self):
+        other=get_user_model().objects.create_user(username="other",password="pass12345")
+        other_lead=Lead.objects.create(owner=other,title="Other Lead",description="Other",source_url="https://other.example/1")
+        response=self.client.get(f"/api/leads/{other_lead.id}/")
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.data["id"],other_lead.id)
+
+    def test_worker_owner_defaults_to_first_user(self):
+        from .discovery_cycle import run_discovery_cycle
+        from unittest.mock import patch
+        with patch("leads.discovery_cycle.DiscoveryService.discover", return_value={"source":"mock","model":"test","leads":[]}) as discover:
+            result=run_discovery_cycle(query="test query",source="mock",qualification_limit=1)
+        self.assertEqual(result["created"],0)
+        discover.assert_called_once()
