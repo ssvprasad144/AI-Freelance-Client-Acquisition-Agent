@@ -12,6 +12,8 @@ SERVICE_TERMS = {
 }
 INTENT_TERMS = {"freelance", "contract", "project", "developer", "development", "build", "mvp", "saas", "prototype", "hiring", "hire"}
 EXCLUSION_TERMS = {"seo", "content writing", "data entry", "crypto trading", "adult", "gambling", "essay writing"}
+MIN_TITLE_CHARS = 8
+MIN_DESCRIPTION_CHARS = 40
 
 
 def _text(lead):
@@ -34,7 +36,12 @@ def local_lead_score(lead):
     service_hits = {k: v for k, v in service_hits.items() if v}
     intent_hits = sorted(term for term in INTENT_TERMS if term in text)
     exclusion_hits = sorted(term for term in EXCLUSION_TERMS if term in text)
-    url_ok = bool(urlsplit(str(getattr(lead, "source_url", ""))).scheme in {"http", "https"})
+    source_url = str(getattr(lead, "source_url", "")).strip()
+    title = str(getattr(lead, "title", "")).strip()
+    description = str(getattr(lead, "description", "")).strip()
+    url_parts = urlsplit(source_url)
+    url_ok = bool(url_parts.scheme in {"http", "https"} and url_parts.netloc)
+    completeness = int(bool(title and len(title) >= MIN_TITLE_CHARS)) + int(len(description) >= MIN_DESCRIPTION_CHARS) + int(bool(getattr(lead, "company", "").strip()))
 
     score = 0
     score += min(55, sum(min(20, len(hits) * 8) for hits in service_hits.values()))
@@ -42,6 +49,9 @@ def local_lead_score(lead):
     score += min(6, len(service_hits) * 2)
     score += 10 if url_ok else 0
     score -= min(40, len(exclusion_hits) * 20)
+    if not title or len(title) < MIN_TITLE_CHARS: score -= 20
+    if len(description) < MIN_DESCRIPTION_CHARS: score -= 15
+    if completeness < 2: score -= 10
 
     return {
         "score": max(0, min(100, score)),
@@ -49,13 +59,14 @@ def local_lead_score(lead):
         "intent_hits": intent_hits,
         "exclusion_hits": exclusion_hits,
         "url_ok": url_ok,
+        "completeness": completeness,
     }
 
 
 def should_crawl_lead(lead):
     result = local_lead_score(lead)
     minimum = getattr(settings, "CRAWLER_MIN_LEAD_SCORE", 40)
-    return result["score"] >= minimum and bool(result["service_hits"]) and result["url_ok"]
+    return result["score"] >= minimum and bool(result["service_hits"]) and result["url_ok"] and result["completeness"] >= 2
 
 
 def should_ai_qualify(lead):

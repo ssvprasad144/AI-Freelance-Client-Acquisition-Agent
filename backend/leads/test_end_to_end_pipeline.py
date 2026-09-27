@@ -81,3 +81,15 @@ class EndToEndPipelineTests(TestCase):
         self.assertEqual(result["created"], 0)
         self.assertEqual(result["invalid"], 1)
         self.assertFalse(Lead.objects.filter(owner=self.user, title="Private target").exists())
+
+
+class LeadQualityGateTests(TestCase):
+    def test_incomplete_lead_is_not_ai_qualified(self):
+        from .lead_optimizer import should_ai_qualify
+        lead = Lead.objects.create(title="Django API", description="Django", source_url="https://example.com", technologies=["Django"], company="Example")
+        self.assertFalse(should_ai_qualify(lead))
+
+    def test_complete_relevant_lead_can_pass_quality_gate(self):
+        from .lead_optimizer import should_ai_qualify
+        lead = Lead.objects.create(title="Build Django automation platform", description="Need a Django API and automation workflow for a client platform.", source_url="https://example.com/project", technologies=["Django", "Python"], company="Example")
+        self.assertTrue(should_ai_qualify(lead))
