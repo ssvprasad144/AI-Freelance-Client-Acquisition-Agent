@@ -65,7 +65,11 @@ def health(request):
             return {"status":"unknown","last_seen":None}
         age=(now-item.created_at).total_seconds()
         return {"status":"healthy" if age<=max(interval*2,120) else "stale","last_seen":item.created_at}
-    return JsonResponse({"status":"healthy","database":database,"service":"ai-freelance-client-acquisition-agent","discovery":"web_search","workers":{"discovery_cron":state(discovery,settings.DISCOVERY_WORKER_INTERVAL),"followup_cron":state(followup,settings.FOLLOWUP_WORKER_INTERVAL)}})
+    discovery_state=state(discovery,settings.DISCOVERY_WORKER_INTERVAL)
+    followup_state=state(followup,settings.FOLLOWUP_WORKER_INTERVAL)
+    stale=discovery_state["status"]=="stale" or followup_state["status"]=="stale"
+    payload={"status":"degraded" if stale else "healthy","database":database,"service":"ai-freelance-client-acquisition-agent","discovery":"web_search","workers":{"discovery_cron":discovery_state,"followup_cron":followup_state}}
+    return JsonResponse(payload,status=503 if stale else 200)
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
