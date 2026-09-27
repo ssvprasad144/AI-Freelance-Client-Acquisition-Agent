@@ -28,7 +28,7 @@ def _domain(value):
     try: return urlsplit(str(value)).netloc.lower().removeprefix("www.")
     except Exception: return ""
 
-def _store(items,profile_id="",strategy_id="",query=""):
+def _store(items,profile_id="",strategy_id="",query="",owner=None):
     created=duplicates=invalid=0
     with transaction.atomic():
         for item in items:
@@ -40,7 +40,7 @@ def _store(items,profile_id="",strategy_id="",query=""):
                 if item.get("expires_at"): existing.expires_at=item.get("expires_at")
                 if item.get("action_url"): existing.action_url=item.get("action_url")
                 existing.save(update_fields=["last_verified_at","expires_at","action_url","updated_at"]); duplicates+=1; continue
-            Lead.objects.create(title=item["title"],normalized_title=nt,normalized_url=nu,company=item.get("company",""),description=item["description"],source=item.get("source") or "web_search",source_url=item["source_url"],action_url=item.get("action_url") or item["source_url"],lead_type=item.get("lead_type","freelance"),budget_text=item.get("budget_text",""),technologies=item.get("technologies") or [],contact_info=item.get("contact_info") or {},discovery_profile=profile_id,discovery_strategy=strategy_id,discovery_query=query,discovered_at=timezone.now(),posted_at=item.get("posted_at") or None,expires_at=item.get("expires_at") or None,last_verified_at=timezone.now()); created+=1
+            Lead.objects.create(owner=owner,title=item["title"],normalized_title=nt,normalized_url=nu,company=item.get("company",""),description=item["description"],source=item.get("source") or "web_search",source_url=item["source_url"],action_url=item.get("action_url") or item["source_url"],lead_type=item.get("lead_type","freelance"),budget_text=item.get("budget_text",""),technologies=item.get("technologies") or [],contact_info=item.get("contact_info") or {},discovery_profile=profile_id,discovery_strategy=strategy_id,discovery_query=query,discovered_at=timezone.now(),posted_at=item.get("posted_at") or None,expires_at=item.get("expires_at") or None,last_verified_at=timezone.now()); created+=1
     return created,duplicates,invalid
 
 def _fresh_qualified_inventory():
@@ -98,7 +98,7 @@ def _find_semantic_reuse(query,profile_id,strategy_id):
 def _payload(query,profile_id,**extra):
     payload={"query":query,"profile_id":profile_id,"source":"web_search","model":settings.DISCOVERY_MODEL,"cached":False,"searched":False,"reused":False,"skip_reason":None,"discovered":0,"created":0,"duplicates":0,"invalid":0,"analyzed":0,"qualified":0,"locally_filtered":0,"ai_calls":0,"ai_input_tokens":0,"ai_output_tokens":0,"qualification_threshold":settings.QUALIFICATION_MIN_SCORE}; payload.update(extra); return payload
 
-def run_discovery_cycle(query=None,source="live",qualification_limit=None,profile_id=None,strategy_id=None):
+def run_discovery_cycle(query=None,source="live",qualification_limit=None,profile_id=None,strategy_id=None,owner=None):
     cycle_started=timezone.now()
     selected=None
     if not query:
@@ -145,12 +145,12 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
         if crawl_candidates:
             from .discovery.public_crawler import enrich_leads
             enriched=enrich_leads(crawl_candidates,max_leads=len(crawl_candidates)); enriched_by_url={_normalize_url(item["source_url"]):item for item in enriched}; items=[enriched_by_url.get(_normalize_url(item.get("source_url","")),item) for item in items]
-    created,duplicates,invalid=_store(items,profile_id=profile_id,strategy_id=strategy_id,query=query)
+    created,duplicates,invalid=_store(items,profile_id=profile_id,strategy_id=strategy_id,query=query,owner=owner)
     domains=_update_domain_stats(items,actual_search=bool(source=="live" and not (cache_fresh or reused_cache)))
     cache_defaults={"query":query,"searched_at":timezone.now(),"result_count":len(items),"query_family":query_family(profile_id,strategy_id),"query_signature":query_signature(query),"result_payload":items[:settings.DISCOVERY_MAX_RESULTS],"source_domains":domains}
     DiscoveryQueryCache.objects.update_or_create(profile_id=profile_id,normalized_query=normalized,defaults=cache_defaults)
     limit=min(qualification_limit or settings.DISCOVERY_MAX_RESULTS,settings.AI_QUALIFICATION_MAX_LEADS_PER_CYCLE); now=timezone.now()
-    candidates=list(Lead.objects.filter(status="new",analysis__isnull=True,discovered_at__gte=cycle_started).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).order_by("-discovered_at","-created_at")[:limit])
+    candidates=list(Lead.objects.filter(owner=owner,status="new",analysis__isnull=True,discovered_at__gte=cycle_started).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).order_by("-discovered_at","-created_at")[:limit])
     analyzed=qualified=locally_filtered=0; ai_input_tokens=ai_output_tokens=0
     for lead in candidates:
         local=local_lead_score(lead)
