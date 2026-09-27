@@ -343,7 +343,7 @@ def send_outreach(request,pk):
     outreach.refresh_from_db()
     try:
         result=send_email(outreach)
-        plan=OutreachPlan.objects.filter(lead__owner=request.user,(lead=outreach.lead,channel=outreach.medium,message=outreach.message,status="approved").order_by("-updated_at").first()
+        plan=OutreachPlan.objects.filter(lead__owner=request.user,lead=outreach.lead,channel=outreach.medium,message=outreach.message,status="approved").order_by("-updated_at").first()
         if plan:
             from .outreach_intelligence import record_attempt_for_outreach
             record_attempt_for_outreach(plan)
