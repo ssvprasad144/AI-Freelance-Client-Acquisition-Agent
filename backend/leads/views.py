@@ -68,7 +68,6 @@ def health(request):
     discovery_state=state(discovery,settings.DISCOVERY_WORKER_INTERVAL)
     followup_state=state(followup,settings.FOLLOWUP_WORKER_INTERVAL)
     stale=discovery_state["status"]=="stale" or followup_state["status"]=="stale"
-    recent_failures=ActivityLog.objects.filter(event_type__in=["cron.discovery.failed","cron.followup.failed"],created_at__gte=now-timezone.timedelta(hours=1)).count() if False else 0
     from datetime import timedelta
     recent_failures=ActivityLog.objects.filter(event_type__in=["cron.discovery.failed","cron.followup.failed"],created_at__gte=now-timedelta(hours=1)).count()
     recent_recoveries=ActivityLog.objects.filter(event_type__in=["followup.recovered","outreach.recovered"],created_at__gte=now-timedelta(hours=1)).count()
