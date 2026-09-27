@@ -192,3 +192,13 @@ class FollowUpClaimTests(APITestBase):
         self.assertEqual(first.status_code,200)
         self.assertEqual(second.status_code,409)
         sender.assert_called_once()
+
+
+class SingleUserWorkspaceTests(TestCase):
+    def test_authenticated_user_can_read_worker_leads_without_owner(self):
+        user=get_user_model().objects.create_user(username="single-user",password="pass12345")
+        lead=Lead.objects.create(title="Worker Lead",description="Discovery result",source_url="https://example.com/worker")
+        client=APIClient(); client.force_authenticate(user)
+        response=client.get(f"/api/leads/{lead.id}/")
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(response.data["id"],lead.id)
