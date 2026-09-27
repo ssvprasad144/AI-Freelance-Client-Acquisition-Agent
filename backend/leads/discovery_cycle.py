@@ -1,5 +1,6 @@
 import re
 from urllib.parse import urlsplit
+from ipaddress import ip_address
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -25,6 +26,22 @@ def _normalize_url(value):
         parts=urlsplit(str(value).strip()); return f"{parts.netloc.lower().removeprefix('www.')}{parts.path.rstrip('/')}"
     except Exception: return str(value).strip().lower().rstrip("/")
 
+def _safe_public_url(value):
+    try:
+        parts=urlsplit(str(value).strip())
+        if parts.scheme not in {"http","https"} or not parts.hostname:
+            return False
+        host=parts.hostname.lower().rstrip(".")
+        if host in {"localhost","localhost.localdomain"} or host.endswith(".local"):
+            return False
+        try:
+            ip=ip_address(host)
+        except ValueError:
+            return True
+        return not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
+    except (TypeError,ValueError):
+        return False
+
 def _domain(value):
     try: return urlsplit(str(value)).netloc.lower().removeprefix("www.")
     except Exception: return ""
@@ -33,7 +50,7 @@ def _store(items,profile_id="",strategy_id="",query="",owner=None):
     created=duplicates=invalid=0
     with transaction.atomic():
         for item in items:
-            if not item.get("title") or not item.get("description") or not item.get("source_url"): invalid+=1; continue
+            if not item.get("title") or not item.get("description") or not _safe_public_url(item.get("source_url")): invalid+=1; continue
             nu=_normalize_url(item["source_url"]); nt=_normalize_title(item["title"])
             existing=Lead.objects.filter(owner=owner,normalized_url=nu).first() or Lead.objects.filter(owner=owner,normalized_title=nt,company__iexact=item.get("company","")).first()
             if existing:
@@ -144,7 +161,7 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
     raw_results=len(items); valid_results=sum(1 for item in items if item.get("title") and item.get("description") and item.get("source_url"))
     ranked=[]; seen=set()
     for item in items:
-        if not item.get("title") or not item.get("description") or not item.get("source_url"): continue
+        if not item.get("title") or not item.get("description") or not _safe_public_url(item.get("source_url")): continue
         key=_normalize_url(item["source_url"])
         if key in seen: continue
         seen.add(key); score=_preview_score(item)
