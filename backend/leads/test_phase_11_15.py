@@ -12,7 +12,7 @@ class Phase1115Tests(TestCase):
         self.client=APIClient()
         user=get_user_model().objects.create_user(username="phase1115",password="pass1234")
         self.client.force_authenticate(user)
-        self.lead=Lead.objects.create(owner=user,owner=user,
+        self.lead=Lead.objects.create(owner=user,
             title="AI automation dashboard",description="Build a Django React AI automation dashboard.",
             company="Acme Labs",source="linkedin",source_url="https://linkedin.com/jobs/view/1",
             action_url="https://linkedin.com/jobs/view/1",contact_info={"email":"client@example.com","name":"Client","profile_url":"https://linkedin.com/in/client"}
