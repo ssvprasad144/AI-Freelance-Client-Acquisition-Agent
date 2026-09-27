@@ -61,6 +61,7 @@ def deterministic_analysis(lead) -> dict[str, Any]:
         "model": "deterministic-fallback",
         "input_tokens": 0,
         "output_tokens": 0,
+        "input_fingerprint": analysis_fingerprint(lead),
     }
 
 
