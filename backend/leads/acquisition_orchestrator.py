@@ -42,9 +42,23 @@ def next_action(lead):
     return {"action":action,"category":category}
 
 def ensure_opportunity(lead):
-    score=opportunity_score(lead); action=next_action(lead)
-    obj,_=AcquisitionOpportunity.objects.update_or_create(lead=lead,defaults={"score":score,"recommended_action":action["action"],"action_category":action.get("category",""),"reason":action.get("reason",""),"stage":lead.status})
-    return obj
+    # Serialize opportunity creation/recalculation per lead. The OneToOne constraint
+    # prevents duplicates, while the lead lock prevents concurrent get/create races.
+    with transaction.atomic():
+        locked_lead=Lead.objects.select_for_update().select_related("analysis").get(pk=lead.pk)
+        score=opportunity_score(locked_lead)
+        action=next_action(locked_lead)
+        obj,_=AcquisitionOpportunity.objects.update_or_create(
+            lead=locked_lead,
+            defaults={
+                "score":score,
+                "recommended_action":action["action"],
+                "action_category":action.get("category",""),
+                "reason":action.get("reason",""),
+                "stage":locked_lead.status,
+            },
+        )
+        return obj
 
 def build_queue(limit=50, owner=None):
     rows=[]
@@ -76,6 +90,10 @@ def execute_action(opportunity,action,mode="approval_required",approved=False):
         rule=VALID_ACTIONS.get(action)
         if not rule or lead.status not in rule["from"]:
             raise ValueError("Invalid or stale action for the lead's current stage.")
+        if lead.owner_id is None:
+            raise ValueError("Acquisition actions require an owned lead.")
+        if opportunity.stage != lead.status:
+            raise ValueError("Opportunity stage is stale; recalculate before executing an action.")
         if opportunity.recommended_action != action and action != "review":
             raise ValueError("This action is no longer the current recommended action.")
         if lead.status in TERMINAL:

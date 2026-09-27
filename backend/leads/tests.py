@@ -128,3 +128,36 @@ class DataIntegrityAuditTests(TestCase):
         contact=Contact.objects.create(client=client,name="Contact")
         lead=Lead.objects.create(owner=owner,title="Bad relation",description="X",source_url="https://example.com/x",contact=contact)
         self.assertIn("contact_without_client",validate_pipeline_invariants(lead))
+
+class AcquisitionPipelineIntegrityTests(TestCase):
+    def test_stale_opportunity_stage_cannot_execute_action(self):
+        from .models import AcquisitionOpportunity
+        from .acquisition_orchestrator import execute_action
+        owner=get_user_model().objects.create_user(username="acq-stage-owner",password="pass12345")
+        lead=Lead.objects.create(owner=owner,title="Stage test",description="D",source_url="https://example.com/stage",status="new")
+        opportunity=AcquisitionOpportunity.objects.create(
+            lead=lead,stage="qualified",recommended_action="generate_proposal"
+        )
+        with self.assertRaisesMessage(ValueError,"Opportunity stage is stale"):
+            execute_action(opportunity,"generate_proposal",mode="manual")
+
+    def test_ownerless_opportunity_cannot_execute(self):
+        from .models import AcquisitionOpportunity
+        from .acquisition_orchestrator import execute_action
+        lead=Lead.objects.create(title="Ownerless",description="D",source_url="https://example.com/ownerless",status="new")
+        opportunity=AcquisitionOpportunity.objects.create(lead=lead,stage="new",recommended_action="qualify")
+        with self.assertRaisesMessage(ValueError,"require an owned lead"):
+            execute_action(opportunity,"qualify",mode="manual")
+
+    def test_ensure_opportunity_recalculates_under_lead_lock(self):
+        from .models import AcquisitionOpportunity
+        from .acquisition_orchestrator import ensure_opportunity
+        owner=get_user_model().objects.create_user(username="acq-lock-owner",password="pass12345")
+        lead=Lead.objects.create(owner=owner,title="Lock test",description="D",source_url="https://example.com/lock",status="new")
+        first=ensure_opportunity(lead)
+        lead.status="qualified"
+        lead.save(update_fields=["status","updated_at"])
+        second=ensure_opportunity(lead)
+        self.assertEqual(first.id,second.id)
+        self.assertEqual(second.stage,"qualified")
+        self.assertEqual(second.recommended_action,"generate_proposal")
