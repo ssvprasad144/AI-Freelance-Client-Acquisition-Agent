@@ -48,7 +48,7 @@ class ProposalVersion(models.Model):
 class Outreach(models.Model):
     lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="outreach"); proposal=models.ForeignKey(Proposal,on_delete=models.SET_NULL,null=True,blank=True,related_name="outreach")
     channel=models.CharField(max_length=30,default="email"); medium=models.CharField(max_length=40,default="email",db_index=True); action_type=models.CharField(max_length=50,default="send_email"); message=models.TextField()
-    destination_url=models.URLField(blank=True); status=models.CharField(max_length=20,default="draft"); approved_at=models.DateTimeField(null=True,blank=True); opened_at=models.DateTimeField(null=True,blank=True); submitted_at=models.DateTimeField(null=True,blank=True); sent_at=models.DateTimeField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True)
+    destination_url=models.URLField(blank=True); status=models.CharField(max_length=20,default="draft"); approved_at=models.DateTimeField(null=True,blank=True); opened_at=models.DateTimeField(null=True,blank=True); submitted_at=models.DateTimeField(null=True,blank=True); sent_at=models.DateTimeField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True,null=True)
 
 class FollowUpSequence(models.Model):
     STATUS=[("active","Active"),("paused","Paused"),("completed","Completed"),("cancelled","Cancelled")]
@@ -74,7 +74,7 @@ class FollowUp(models.Model):
     action_type=models.CharField(max_length=50,default="send_email")
     destination_url=models.URLField(blank=True)
     scheduled_at=models.DateTimeField(); message=models.TextField()
-    status=models.CharField(max_length=20,default="draft"); approved_at=models.DateTimeField(null=True,blank=True); sent_at=models.DateTimeField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True)
+    status=models.CharField(max_length=20,default="draft"); approved_at=models.DateTimeField(null=True,blank=True); sent_at=models.DateTimeField(null=True,blank=True); created_at=models.DateTimeField(auto_now_add=True); updated_at=models.DateTimeField(auto_now=True,null=True)
 
 class Reply(models.Model):
     lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="replies")

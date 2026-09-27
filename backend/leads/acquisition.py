@@ -69,6 +69,7 @@ def send_email(outreach):
     if not getattr(settings,"OUTREACH_ENABLED",False):
         raise ValueError("Outbound sending is disabled. Enable it explicitly after configuring email.")
     message=EmailMessage()
+    message["Message-ID"]=f"<outreach-{outreach.id}@{settings.OUTREACH_FROM_EMAIL.split('@')[-1]}>"
     message["Subject"]=f"Re: {lead.title}"
     message["From"]=settings.OUTREACH_FROM_EMAIL
     message["To"]=recipient
@@ -94,6 +95,7 @@ def send_followup(followup):
     if not getattr(settings,"OUTREACH_ENABLED",False):
         raise ValueError("Outbound sending is disabled. Enable it explicitly after configuring email.")
     message=EmailMessage()
+    message["Message-ID"]=f"<followup-{followup.id}@{settings.OUTREACH_FROM_EMAIL.split('@')[-1]}>"
     message["Subject"]=f"Following up: {followup.lead.title}"
     message["From"]=settings.OUTREACH_FROM_EMAIL
     message["To"]=recipient
