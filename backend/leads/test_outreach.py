@@ -93,15 +93,15 @@ class SourceAwareOutreachTests(TestCase):
     @patch("leads.acquisition.smtplib.SMTP")
     def test_approved_email_can_send_after_claim(self, smtp_cls):
         smtp = smtp_cls.return_value.__enter__.return_value
-        lead = self.make_lead("direct", contact_info={"email": "client@example.com"})
+        lead = self.make_lead("direct", contact_info={"email": "client@acme.io"})
         self.qualify(lead)
         LeadEvidence.objects.create(
             lead=lead,
             field_name="contact_info.email",
-            value="client@example.com",
+            value="client@acme.io",
             evidence_hash="email-supported-test",
             source_url=lead.source_url,
-            excerpt="Contact client@example.com for the opportunity.",
+            excerpt="Contact client@acme.io for the opportunity.",
             source_supported=True,
         )
         response = self.client.post(f"/api/leads/{lead.id}/proposal/")
