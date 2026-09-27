@@ -68,6 +68,8 @@ VALID_ACTIONS={
 }
 
 def execute_action(opportunity,action,mode="approval_required",approved=False):
+    if not isinstance(action,str) or action not in VALID_ACTIONS:
+        raise ValueError("Unsupported acquisition action.")
     with transaction.atomic():
         opportunity=AcquisitionOpportunity.objects.select_for_update().select_related("lead").get(pk=opportunity.pk)
         lead=opportunity.lead
@@ -81,11 +83,15 @@ def execute_action(opportunity,action,mode="approval_required",approved=False):
         if mode not in {"manual","approval_required","automatic"}:
             raise ValueError("Invalid automation mode.")
         configured=getattr(settings,"ACQUISITION_AUTOMATION_MODE","approval_required")
+        if configured not in {"manual","approval_required","automatic"}:
+            raise ValueError("Invalid configured automation mode.")
         if mode=="automatic" and configured!="automatic":
             raise ValueError("Automatic execution is disabled by the configured automation mode.")
         if mode=="approval_required" and not approved:
             opportunity.status="pending_approval"; opportunity.last_action=action; opportunity.save(update_fields=["status","last_action","updated_at"])
             return {"executed":False,"requires_approval":True,"action":action}
+        if mode=="automatic" and action in {"approve_proposal","book_meeting"}:
+            raise ValueError("This action requires explicit human approval.")
         if action=="qualify":
             if not lead.analysis_id: raise ValueError("Analyze the lead before qualification.")
             lead.status="qualified"; lead.save(update_fields=["status","updated_at"])
