@@ -206,6 +206,9 @@ class LeadViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return Lead.objects.filter(owner=self.request.user).prefetch_related("analysis")
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
     @action(detail=True,methods=["post"],throttle_classes=[AIThrottle])
     def analyze(self,request,pk=None):
         lead=self.get_object(); data=analyze_lead(lead); analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data)

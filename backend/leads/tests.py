@@ -44,3 +44,40 @@ class LearningOwnerIsolationTests(TestCase):
         response=client.get("/api/learning/")
         self.assertEqual(response.status_code,200)
         self.assertTrue(all(row["owner"]==owner.id for row in response.data["stats"]))
+
+
+class LeadCreationOwnershipTests(TestCase):
+    def test_authenticated_api_lead_creation_assigns_owner(self):
+        owner=get_user_model().objects.create_user(username="creation-owner",password="pass12345")
+        client=APIClient()
+        client.force_authenticate(owner)
+        response=client.post(
+            "/api/leads/",
+            {
+                "title":"API-created lead",
+                "description":"A Django automation opportunity.",
+                "source_url":"https://example.com/opportunity",
+                "company":"Example Co",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code,201)
+        lead=Lead.objects.get(pk=response.data["id"])
+        self.assertEqual(lead.owner_id,owner.id)
+
+    def test_authenticated_api_cannot_create_ownerless_lead(self):
+        owner=get_user_model().objects.create_user(username="creation-owner-2",password="pass12345")
+        client=APIClient()
+        client.force_authenticate(owner)
+        response=client.post(
+            "/api/leads/",
+            {
+                "title":"Owner protection",
+                "description":"Protected creation.",
+                "source_url":"https://example.com/protected",
+                "owner":None,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code,201)
+        self.assertEqual(Lead.objects.get(pk=response.data["id"]).owner_id,owner.id)
