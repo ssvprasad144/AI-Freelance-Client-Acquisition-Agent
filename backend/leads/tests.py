@@ -138,9 +138,9 @@ class OutboundAmbiguousDeliveryTests(TestCase):
         lead=Lead.objects.create(owner=owner,title="Outbound safety lead",description="Test",source_url="https://example.com/outbound",contact_info={"email":"client@example.com"})
         old=timezone.now()-timedelta(minutes=45)
         outreach=Outreach.objects.create(lead=lead,channel="email",medium="email",message="Test outreach",status="sending")
-        outreach.updated_at=old; outreach.save(update_fields=["updated_at"])
+        Outreach.objects.filter(pk=outreach.pk).update(updated_at=old)
         followup=FollowUp.objects.create(lead=lead,scheduled_at=timezone.now(),message="Test follow-up",status="sending")
-        followup.updated_at=old; followup.save(update_fields=["updated_at"])
+        FollowUp.objects.filter(pk=followup.pk).update(updated_at=old)
         from .followup_service import recover_stale_outbound_claims
         result=recover_stale_outbound_claims(max_age_minutes=30)
         outreach.refresh_from_db(); followup.refresh_from_db()
