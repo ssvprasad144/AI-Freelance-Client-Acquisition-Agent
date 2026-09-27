@@ -3,6 +3,7 @@ import uuid
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
+from django.db import connection
 from django.utils import timezone
 
 from leads.followup_service import process_due_followups
@@ -17,44 +18,58 @@ class Command(BaseCommand):
         parser.add_argument("--interval", type=int, default=settings.FOLLOWUP_WORKER_INTERVAL)
 
     def handle(self, *args, **options):
-        interval = max(options["interval"], 10)
-        while True:
-            run_id = uuid.uuid4().hex
-            started_at = timezone.now()
-            ActivityLog.objects.create(
-                event_type="cron.followup.started",
-                message="Follow-up Cron execution started.",
-                metadata={"run_id": run_id, "interval": interval, "loop": bool(options["loop"])},
-            )
-            try:
-                result = process_due_followups()
-                duration_ms = int((timezone.now() - started_at).total_seconds() * 1000)
-                result["run_id"] = run_id
-                result["duration_ms"] = duration_ms
-                self.stdout.write(
-                    self.style.SUCCESS(
-                        "Follow-up Cron: run_id={run_id}, processed={processed}, due={due}, sent={sent}, "
-                        "duration_ms={duration_ms}".format(**result)
+        lock_acquired = True
+        if connection.vendor == "postgresql":
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_try_advisory_lock(%s)", [982452])
+                lock_acquired = bool(cursor.fetchone()[0])
+            if not lock_acquired:
+                self.stdout.write(self.style.WARNING("Follow-up Cron skipped: another instance is already running."))
+                return
+        try:
+            interval = max(options["interval"], 10)
+            while True:
+                run_id = uuid.uuid4().hex
+                started_at = timezone.now()
+                ActivityLog.objects.create(
+                    event_type="cron.followup.started",
+                    message="Follow-up Cron execution started.",
+                    metadata={"run_id": run_id, "interval": interval, "loop": bool(options["loop"])},
+                )
+                try:
+                    result = process_due_followups()
+                    duration_ms = int((timezone.now() - started_at).total_seconds() * 1000)
+                    result["run_id"] = run_id
+                    result["duration_ms"] = duration_ms
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            "Follow-up Cron: run_id={run_id}, processed={processed}, due={due}, sent={sent}, "
+                            "duration_ms={duration_ms}".format(**result)
+                        )
                     )
-                )
-                ActivityLog.objects.create(
-                    event_type="cron.followup.completed",
-                    message="Follow-up Cron execution completed.",
-                    metadata=result,
-                )
-            except Exception as exc:
-                duration_ms = int((timezone.now() - started_at).total_seconds() * 1000)
-                ActivityLog.objects.create(
-                    event_type="cron.followup.failed",
-                    message="Follow-up Cron execution failed.",
-                    metadata={"run_id": run_id, "duration_ms": duration_ms, "error": str(exc)},
-                )
-                self.stderr.write(self.style.ERROR(f"Follow-up Cron error: run_id={run_id}, duration_ms={duration_ms}, error={exc}"))
-                raise
-            if not options["loop"]:
-                break
-            try:
-                time.sleep(interval)
-            except KeyboardInterrupt:
-                self.stdout.write(self.style.WARNING("Follow-up Cron stopped."))
-                break
+                    ActivityLog.objects.create(
+                        event_type="cron.followup.completed",
+                        message="Follow-up Cron execution completed.",
+                        metadata=result,
+                    )
+                except Exception as exc:
+                    duration_ms = int((timezone.now() - started_at).total_seconds() * 1000)
+                    ActivityLog.objects.create(
+                        event_type="cron.followup.failed",
+                        message="Follow-up Cron execution failed.",
+                        metadata={"run_id": run_id, "duration_ms": duration_ms, "error": str(exc)},
+                    )
+                    self.stderr.write(self.style.ERROR(f"Follow-up Cron error: run_id={run_id}, duration_ms={duration_ms}, error={exc}"))
+                    raise
+                if not options["loop"]:
+                    break
+                try:
+                    time.sleep(interval)
+                except KeyboardInterrupt:
+                    self.stdout.write(self.style.WARNING("Follow-up Cron stopped."))
+                    break
+
+        finally:
+            if lock_acquired and connection.vendor == "postgresql":
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_advisory_unlock(%s)", [982452])
