@@ -50,7 +50,8 @@ def refresh_learning(owner=None):
             meetings+=int(lead.meetings.filter(status__in=["requested","scheduled","completed"]).exists())
             wins+=int(lead.status=="won"); losses+=int(lead.status=="lost"); reward+=lead_reward(lead)
         if attempts < MIN_LEADS_FOR_LEARNING:
-            reward=round(reward,3)
+            # Sparse buckets must not become optimization signals until there is enough evidence.
+            reward=0.0
         LearningStat.objects.create(dimension=dimension,key=key,attempts=attempts,qualified=qualified,proposals=proposals,sent=sent,replies=replies,meetings=meetings,wins=wins,losses=losses,reward=round(reward,3))
     return list(LearningStat.objects.values().order_by("-reward","-attempts")[:100])
 def log_acquisition_event(lead,event_type,metadata=None):
