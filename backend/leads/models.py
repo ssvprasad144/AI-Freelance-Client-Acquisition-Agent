@@ -221,7 +221,7 @@ class Contact(models.Model):
     email=models.EmailField(blank=True)
     normalized_email=models.CharField(max_length=254,blank=True,db_index=True)
     profile_url=models.URLField(max_length=2048,blank=True)
-    normalized_profile_url=models.CharField(max_length=500,blank=True,db_index=True)
+    normalized_profile_url=models.CharField(max_length=2048,blank=True,db_index=True)
     role=models.CharField(max_length=120,blank=True)
     metadata=models.JSONField(default=dict,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)
