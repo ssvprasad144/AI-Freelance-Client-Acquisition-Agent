@@ -141,6 +141,7 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
         owner = get_user_model().objects.order_by("id").first()
     cycle_started=timezone.now()
     selected=None
+    source_findings=[]
     if not query:
         selected=select_profile(settings.DISCOVERY_QUERY_CACHE_TTL_HOURS,strategy_id=strategy_id); query,profile_id,strategy_id=selected["query"],selected["id"],selected.get("strategy_id")
     query=query.strip(); normalized=normalize_query(query); profile_id=profile_id or "custom"; strategy_id=strategy_id or "general-web"
