@@ -36,7 +36,10 @@ def refresh_learning(owner=None):
         for key in keys: buckets[key].append(lead)
         for event in lead.acquisition_events.all()[:100]:
             if event.domain: buckets[("domain",event.domain)].append(lead)
-    LearningStat.objects.all().delete()
+    if owner is None:
+        LearningStat.objects.all().delete()
+    else:
+        LearningStat.objects.filter(owner=owner).delete()
     for (dimension,key),leads in buckets.items():
         unique={lead.id:lead for lead in leads}.values()
         attempts=qualified=proposals=sent=replies=meetings=wins=losses=0
@@ -52,7 +55,8 @@ def refresh_learning(owner=None):
         if attempts < MIN_LEADS_FOR_LEARNING:
             # Sparse buckets must not become optimization signals until there is enough evidence.
             reward=0.0
-        LearningStat.objects.create(dimension=dimension,key=key,attempts=attempts,qualified=qualified,proposals=proposals,sent=sent,replies=replies,meetings=meetings,wins=wins,losses=losses,reward=round(reward,3))
-    return list(LearningStat.objects.values().order_by("-reward","-attempts")[:100])
+        LearningStat.objects.create(owner=owner or leads_qs.first().owner,dimension=dimension,key=key,attempts=attempts,qualified=qualified,proposals=proposals,sent=sent,replies=replies,meetings=meetings,wins=wins,losses=losses,reward=round(reward,3))
+    stats_qs=LearningStat.objects.all() if owner is None else LearningStat.objects.filter(owner=owner)
+    return list(stats_qs.values().order_by("-reward","-attempts")[:100])
 def log_acquisition_event(lead,event_type,metadata=None):
     return AcquisitionEvent.objects.create(lead=lead,event_type=event_type,source=lead.source,profile_id=lead.discovery_profile,strategy_id=lead.discovery_strategy,query=lead.discovery_query,metadata=metadata or {})
