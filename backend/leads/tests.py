@@ -281,3 +281,70 @@ class AIQualificationLifecycleTests(TestCase):
         response=client.patch(f"/api/leads/{lead.id}/",{"description":"Need a React dashboard instead."},format="json")
         self.assertEqual(response.status_code,200)
         self.assertFalse(LeadAnalysis.objects.filter(lead=lead).exists())
+
+
+class APILifecycleAuditTests(TestCase):
+    def setUp(self):
+        self.owner=get_user_model().objects.create_user(username="api-audit-owner",password="pass12345")
+        self.other=get_user_model().objects.create_user(username="api-audit-other",password="pass12345")
+        self.client=APIClient()
+        self.client.force_authenticate(self.owner)
+
+    def test_acquisition_action_rejects_string_false_as_approval(self):
+        lead=Lead.objects.create(owner=self.owner,title="Qualified lead",description="Django project",source_url="https://example.com/qualified",status="qualified")
+        LeadAnalysis.objects.create(lead=lead,relevant=True,match_score=90,service_match="Django",confidence=90,input_fingerprint="")
+        from .acquisition_orchestrator import ensure_opportunity
+        opportunity=ensure_opportunity(lead)
+        response=self.client.post(
+            f"/api/acquisition/{opportunity.id}/action/",
+            {"action":"generate_proposal","mode":"approval_required","approved":"false"},
+            format="json",
+        )
+        self.assertEqual(response.status_code,200)
+        self.assertFalse(response.data["executed"])
+        self.assertTrue(response.data["requires_approval"])
+        self.assertEqual(lead.outreach.count(),0)
+
+    def test_acquisition_action_rejects_invalid_boolean(self):
+        lead=Lead.objects.create(owner=self.owner,title="Qualified lead",description="Django project",source_url="https://example.com/qualified-2",status="qualified")
+        LeadAnalysis.objects.create(lead=lead,relevant=True,match_score=90,service_match="Django",confidence=90,input_fingerprint="")
+        from .acquisition_orchestrator import ensure_opportunity
+        opportunity=ensure_opportunity(lead)
+        response=self.client.post(
+            f"/api/acquisition/{opportunity.id}/action/",
+            {"action":"generate_proposal","mode":"approval_required","approved":"maybe"},
+            format="json",
+        )
+        self.assertEqual(response.status_code,400)
+        self.assertFalse(response.data["executed"])
+
+    def test_invalid_meeting_transition_returns_400(self):
+        from .models import Client, Meeting
+        client=Client.objects.create(owner=self.owner,company="Meeting Client",normalized_company="meeting client")
+        meeting=Meeting.objects.create(client=client,status="completed")
+        response=self.client.patch(
+            f"/api/meetings/{meeting.id}/",
+            {"status":"scheduled"},
+            format="json",
+        )
+        self.assertEqual(response.status_code,400)
+        meeting.refresh_from_db()
+        self.assertEqual(meeting.status,"completed")
+
+    def test_cross_owner_meeting_is_not_mutable(self):
+        from .models import Meeting
+        lead=Lead.objects.create(owner=self.other,title="Other lead",description="Other",source_url="https://example.com/other-meeting")
+        meeting=Meeting.objects.create(lead=lead,status="requested")
+        response=self.client.patch(
+            f"/api/meetings/{meeting.id}/",
+            {"status":"cancelled"},
+            format="json",
+        )
+        self.assertEqual(response.status_code,404)
+        meeting.refresh_from_db()
+        self.assertEqual(meeting.status,"requested")
+
+    def test_invalid_numeric_limit_returns_400(self):
+        response=self.client.post("/api/discovery/qualify/",{"limit":"not-a-number"},format="json")
+        self.assertEqual(response.status_code,400)
+        self.assertIn("limit",response.data["detail"])
