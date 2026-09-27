@@ -1,3 +1,4 @@
+import socket
 from unittest.mock import patch
 
 from django.test import SimpleTestCase
@@ -17,7 +18,7 @@ class CrawlerSecurityTests(SimpleTestCase):
 
         self.assertEqual(parsed.hostname, "example.com")
         self.assertEqual(addresses, ("93.184.216.34",))
-        getaddrinfo.assert_called_once_with("example.com", None, type=2)
+        getaddrinfo.assert_called_once_with("example.com", None, type=socket.SOCK_STREAM)
 
     @patch("leads.discovery.public_crawler.socket.getaddrinfo")
     def test_private_dns_answer_is_blocked_before_connection(self, getaddrinfo):
