@@ -119,6 +119,7 @@ class ClientIntelligenceHardeningTests(TestCase):
 
     @patch("leads.client_service.OpenAI")
     @patch("leads.client_service.settings.OPENAI_API_KEY", "test-key")
+    @patch("leads.client_service.settings.OPENAI_MODEL", "test-model")
     def test_valid_ai_json_is_validated_and_confidence_is_bounded(self, openai_cls):
         response = type("Response", (), {
             "output_text": '{"summary":"Observed history only","communication_style":"concise","preferences":["email"],"objections":["budget"],"recommended_approach":"Ask for the next concrete step.","confidence":150}'
