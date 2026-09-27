@@ -46,9 +46,12 @@ def ensure_opportunity(lead):
     obj,_=AcquisitionOpportunity.objects.update_or_create(lead=lead,defaults={"score":score,"recommended_action":action["action"],"action_category":action.get("category",""),"reason":action.get("reason",""),"stage":lead.status})
     return obj
 
-def build_queue(limit=50):
+def build_queue(limit=50, owner=None):
     rows=[]
-    for lead in Lead.objects.exclude(status__in=TERMINAL).select_related("analysis").prefetch_related("replies","meetings")[:500]:
+    queryset=Lead.objects.exclude(status__in=TERMINAL)
+    if owner is not None:
+        queryset=queryset.filter(owner=owner)
+    for lead in queryset.select_related("analysis").prefetch_related("replies","meetings")[:500]:
         rows.append(ensure_opportunity(lead))
     rows.sort(key=lambda x:(x.score,x.updated_at.timestamp()),reverse=True)
     return rows[:limit]
@@ -123,9 +126,12 @@ def execute_action(opportunity,action,mode="approval_required",approved=False):
 
 
 
-def recalculate_opportunities():
+def recalculate_opportunities(owner=None):
     updated=0
-    for lead in Lead.objects.exclude(status__in=TERMINAL).select_related("analysis"):
+    queryset=Lead.objects.exclude(status__in=TERMINAL)
+    if owner is not None:
+        queryset=queryset.filter(owner=owner)
+    for lead in queryset.select_related("analysis"):
         ensure_opportunity(lead)
         updated += 1
     return {"updated": updated}
