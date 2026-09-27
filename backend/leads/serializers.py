@@ -6,6 +6,12 @@ class LeadAnalysisSerializer(serializers.ModelSerializer):
 
 class LeadSerializer(serializers.ModelSerializer):
     analysis=LeadAnalysisSerializer(read_only=True)
+
+    def update(self, instance, validated_data):
+        analysis_fields={"title","company","description","budget_text","technologies","lead_type"}
+        if analysis_fields.intersection(validated_data):
+            LeadAnalysis.objects.filter(lead=instance).delete()
+        return super().update(instance, validated_data)
     class Meta:
         model=Lead
         fields="__all__"
