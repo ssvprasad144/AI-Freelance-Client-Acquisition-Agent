@@ -240,6 +240,7 @@ class AcquisitionEvent(models.Model):
     occurred_at=models.DateTimeField(default=timezone.now,db_index=True)
 
 class LearningStat(models.Model):
+    owner=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,related_name="acquisition_learning_stats",db_index=True)
     DIMENSIONS=[("source","Source"),("profile","Profile"),("strategy","Strategy"),("domain","Domain"),("lead_type","Lead type"),("query","Query")]
     dimension=models.CharField(max_length=30,choices=DIMENSIONS,db_index=True)
     key=models.CharField(max_length=1000,db_index=True)
