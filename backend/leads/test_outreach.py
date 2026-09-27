@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from unittest.mock import patch
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -91,6 +91,7 @@ class SourceAwareOutreachTests(TestCase):
         self.assertEqual(outreach.status, "draft")
 
     @patch("leads.acquisition.smtplib.SMTP")
+    @override_settings(OUTREACH_ENABLED=True, SMTP_HOST="smtp.test", SMTP_PORT=587, SMTP_USE_TLS=False, SMTP_USERNAME="", SMTP_PASSWORD="", OUTREACH_FROM_EMAIL="sender@acme.io")
     def test_approved_email_can_send_after_claim(self, smtp_cls):
         smtp = smtp_cls.return_value.__enter__.return_value
         lead = self.make_lead("direct", contact_info={"email": "client@acme.io"})
