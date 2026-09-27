@@ -14,7 +14,7 @@ class FailureRecoveryTests(TestCase):
         self.user = get_user_model().objects.create_user(username="recovery-owner", password="pass12345")
         self.lead = Lead.objects.create(owner=self.user, title="Recovery", description="Test", source_url="https://example.com/recovery")
 
-    def test_stale_sending_claims_are_recovered(self):
+    def test_stale_sending_claims_become_uncertain(self):
         old = timezone.now() - timedelta(minutes=60)
         followup = FollowUp.objects.create(
             lead=self.lead,
@@ -37,5 +37,5 @@ class FailureRecoveryTests(TestCase):
         self.assertEqual(result, {"followups": 1, "outreach": 1})
         followup.refresh_from_db()
         outreach.refresh_from_db()
-        self.assertEqual(followup.status, "due")
-        self.assertEqual(outreach.status, "approved")
+        self.assertEqual(followup.status, "send_uncertain")
+        self.assertEqual(outreach.status, "send_uncertain")

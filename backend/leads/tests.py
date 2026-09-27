@@ -138,9 +138,9 @@ class OutboundAmbiguousDeliveryTests(TestCase):
         lead=Lead.objects.create(owner=owner,title="Outbound safety lead",description="Test",source_url="https://example.com/outbound",contact_info={"email":"client@example.com"})
         old=timezone.now()-timedelta(minutes=45)
         outreach=Outreach.objects.create(lead=lead,channel="email",medium="email",message="Test outreach",status="sending")
-        outreach.updated_at=old; outreach.save(update_fields=["updated_at"])
+        Outreach.objects.filter(pk=outreach.pk).update(updated_at=old)
         followup=FollowUp.objects.create(lead=lead,scheduled_at=timezone.now(),message="Test follow-up",status="sending")
-        followup.updated_at=old; followup.save(update_fields=["updated_at"])
+        FollowUp.objects.filter(pk=followup.pk).update(updated_at=old)
         from .followup_service import recover_stale_outbound_claims
         result=recover_stale_outbound_claims(max_age_minutes=30)
         outreach.refresh_from_db(); followup.refresh_from_db()
@@ -158,3 +158,17 @@ class OutboundAmbiguousDeliveryTests(TestCase):
         followup=FollowUp.objects.create(lead=lead,scheduled_at=timezone.now(),message="Test",status="send_uncertain")
         with self.assertRaises(ValueError): send_email(outreach)
         with self.assertRaises(ValueError): send_followup(followup)
+class DatabaseIntegrityAuditTests(TestCase):
+    def test_learning_stat_uniqueness_is_scoped_to_owner(self):
+        owner=get_user_model().objects.create_user(username="learning-db-owner-a",password="pass12345")
+        other=get_user_model().objects.create_user(username="learning-db-owner-b",password="pass12345")
+        LearningStat.objects.create(owner=owner,dimension="source",key="shared-key",attempts=2)
+        LearningStat.objects.create(owner=other,dimension="source",key="shared-key",attempts=3)
+        self.assertEqual(LearningStat.objects.filter(dimension="source",key="shared-key").count(),2)
+
+    def test_learning_stat_duplicate_for_same_owner_is_rejected(self):
+        from django.db import IntegrityError
+        owner=get_user_model().objects.create_user(username="learning-db-owner-c",password="pass12345")
+        LearningStat.objects.create(owner=owner,dimension="source",key="same-key",attempts=1)
+        with self.assertRaises(IntegrityError):
+            LearningStat.objects.create(owner=owner,dimension="source",key="same-key",attempts=2)
