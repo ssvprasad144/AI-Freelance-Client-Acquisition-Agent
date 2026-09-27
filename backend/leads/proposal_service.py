@@ -43,7 +43,9 @@ def current_version(proposal):
 
 
 def revise_proposal(proposal, instruction: str, source="ai"):
-    instruction = (instruction or "").strip()\n    if len(instruction) > 2000:\n        raise ValueError("Revision instruction is too long.")
+    instruction = (instruction or "").strip()
+    if len(instruction) > 2000:
+        raise ValueError("Revision instruction is too long.")
     if not instruction:
         raise ValueError("A revision instruction is required.")
     current = current_version(proposal)
