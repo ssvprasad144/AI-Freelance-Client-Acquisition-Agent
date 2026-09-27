@@ -131,3 +131,25 @@ class LeadDataQualityTests(TestCase):
         lead = Lead.objects.get(normalized_url="https://acme.com/jobs/42")
         client, _ = sync_lead_client(lead)
         self.assertEqual(client.domain, "")
+
+
+class LegacyIdentitySaveTests(TestCase):
+    def test_legacy_duplicate_lead_key_stays_blank_on_unrelated_edit(self):
+        lead = Lead.objects.create(**lead_row())
+        Lead.objects.filter(pk=lead.pk).update(normalized_url="")
+        lead.refresh_from_db()
+        lead.description = "Updated description."
+        lead.save()
+        lead.refresh_from_db()
+        self.assertEqual(lead.normalized_url, "")
+
+    def test_legacy_duplicate_contact_keys_stay_blank_on_unrelated_edit(self):
+        client = Client.objects.create(company="Acme", normalized_company="acme")
+        contact = Contact.objects.create(client=client, email="person@acme.com", profile_url="https://acme.test/person")
+        Contact.objects.filter(pk=contact.pk).update(normalized_email="", normalized_profile_url="")
+        contact.refresh_from_db()
+        contact.name = "Updated Name"
+        contact.save()
+        contact.refresh_from_db()
+        self.assertEqual(contact.normalized_email, "")
+        self.assertEqual(contact.normalized_profile_url, "")
