@@ -4,6 +4,7 @@ from .models import Lead, OutreachPlan, Outreach
 
 CHANNELS={"email":{"automatic":True,"action":"send_email"},"linkedin":{"automatic":False,"action":"manual_submit"},"marketplace":{"automatic":False,"action":"manual_submit"},"contact_form":{"automatic":False,"action":"manual_submit"},"community":{"automatic":False,"action":"manual_submit"}}
 STOP_STATUSES={"replied","won","lost","archived"}
+MAX_OUTREACH_MESSAGE_CHARS=4000
 
 def choose_channel(lead):
     medium=(lead.outreach.order_by("-created_at").values_list("medium",flat=True).first() or "").lower()
@@ -13,17 +14,22 @@ def choose_channel(lead):
 
 def personalized_message(lead,channel,variant="A"):
     intelligence=getattr(lead.client,"intelligence",None) if lead.client_id else None
-    style=intelligence.communication_style if intelligence else ""
-    approach=intelligence.recommended_approach if intelligence else ""
+    analysis=getattr(lead,"analysis",None)
     intro=f"Hi {(lead.contact_info or {}).get('name') or 'there'},"
-    value=f"I can help with {lead.title.lower()} using a practical Django/React and AI automation approach."
-    proof=" I’ve built AI interview, automation, and full-stack products with Django, React and PostgreSQL."
-    ask=" If this is still active, I’d be happy to discuss the scope and next steps."
-    if variant=="B": value=f"Your {lead.title.lower()} looks like a strong fit for an AI-assisted implementation."
-    if approach:value+=f" {approach[:220]}"
-    if style and "concise" in style.lower(): ask=" Open to a short discussion this week?"
-    return "\n\n".join([intro, value + proof, ask])
-
+    service=(analysis.service_match if analysis else "") or "the requested development work"
+    projects=list((analysis.matching_projects if analysis else []) or [])[:3]
+    evidence=", ".join(projects) if projects else "relevant portfolio projects"
+    value=f"I can help with {lead.title.lower()} with a practical {service} implementation."
+    proof=f"Relevant evidence from my portfolio: {evidence}."
+    ask="If this is still active, I’d be happy to discuss the scope and next steps."
+    if variant=="B":
+        value=f"Your {lead.title.lower()} looks aligned with my {service} experience."
+    approach=(intelligence.recommended_approach if intelligence else "") or ""
+    if approach:
+        proof += f" {approach[:220]}"
+    if intelligence and "concise" in (intelligence.communication_style or "").lower():
+        ask="Open to a short discussion this week?"
+    return "\n\n".join([intro,value,proof,ask])[:MAX_OUTREACH_MESSAGE_CHARS]
 def create_plan(lead,channel=None,variant="A"):
     if not eligible(lead): raise ValueError("Outreach is blocked because this lead has replied, has a meeting, or is terminal.")
     channel=channel or choose_channel(lead)
