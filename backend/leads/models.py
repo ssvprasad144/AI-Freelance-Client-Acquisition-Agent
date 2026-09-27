@@ -19,6 +19,24 @@ class Lead(models.Model):
         constraints=[models.UniqueConstraint(fields=["owner","normalized_url"],condition=~models.Q(normalized_url=""),name="unique_lead_owner_normalized_url")]
     def __str__(self): return self.title
 
+class LeadEvidence(models.Model):
+    ORIGINS=[("extracted","Extracted"),("ai_inferred","AI inferred"),("crawler","Crawler")]
+    STATUSES=[("validated","Validated"),("unvalidated","Unvalidated")]
+    lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="evidence")
+    field_name=models.CharField(max_length=100)
+    value=models.TextField()
+    evidence_hash=models.CharField(max_length=64)
+    source_url=models.URLField(blank=True)
+    excerpt=models.TextField(blank=True)
+    origin=models.CharField(max_length=30,choices=ORIGINS,default="extracted")
+    validation_status=models.CharField(max_length=30,choices=STATUSES,default="unvalidated")
+    source_supported=models.BooleanField(default=False)
+    observed_at=models.DateTimeField(default=timezone.now)
+    metadata=models.JSONField(default=dict,blank=True)
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=["lead","evidence_hash"],name="unique_lead_evidence_hash")]
+        ordering=["field_name","id"]
+
 class LeadAnalysis(models.Model):
     lead=models.OneToOneField(Lead,on_delete=models.CASCADE,related_name="analysis"); relevant=models.BooleanField(default=False); match_score=models.PositiveSmallIntegerField(default=0)
     service_match=models.CharField(max_length=100,blank=True); requirements=models.JSONField(default=list,blank=True); pain_points=models.JSONField(default=list,blank=True)
