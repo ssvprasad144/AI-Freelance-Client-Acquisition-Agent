@@ -34,7 +34,7 @@ def _store(items,profile_id="",strategy_id="",query="",owner=None):
         for item in items:
             if not item.get("title") or not item.get("description") or not item.get("source_url"): invalid+=1; continue
             nu=_normalize_url(item["source_url"]); nt=_normalize_title(item["title"])
-            existing=Lead.objects.filter(normalized_url=nu).first() or Lead.objects.filter(normalized_title=nt,company__iexact=item.get("company","")).first()
+            existing=Lead.objects.filter(owner=owner,normalized_url=nu).first() or Lead.objects.filter(owner=owner,normalized_title=nt,company__iexact=item.get("company","")).first()
             if existing:
                 existing.last_verified_at=timezone.now()
                 if item.get("expires_at"): existing.expires_at=item.get("expires_at")
