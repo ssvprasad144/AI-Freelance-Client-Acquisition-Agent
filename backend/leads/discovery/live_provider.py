@@ -21,6 +21,42 @@ def _safe_public_url(value):
         return False
 
 
+def _citation_excerpt(text: str, annotation: Any) -> str:
+    start = getattr(annotation, "start_index", None)
+    end = getattr(annotation, "end_index", None)
+    if isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(text):
+        return text[max(0, start - 220):min(len(text), end + 220)].strip()
+    cited = getattr(annotation, "text", None)
+    if cited:
+        return str(cited).strip()
+    return ""
+
+
+def _source_findings(response) -> list[dict[str, str]]:
+    text = (getattr(response, "output_text", None) or "").strip()
+    findings = []
+    seen = set()
+    for output in getattr(response, "output", None) or []:
+        for content in getattr(output, "content", None) or []:
+            for annotation in getattr(content, "annotations", None) or []:
+                url = getattr(annotation, "url", None)
+                if not url or not _safe_public_url(url):
+                    continue
+                excerpt = _citation_excerpt(text, annotation)
+                if not excerpt:
+                    continue
+                key = (str(url).strip(), excerpt)
+                if key in seen:
+                    continue
+                seen.add(key)
+                findings.append({
+                    "url": str(url).strip(),
+                    "title": str(getattr(annotation, "title", "") or "").strip(),
+                    "excerpt": excerpt,
+                })
+    return findings
+
+
 class LiveDiscoveryError(Exception):
     pass
 
@@ -200,4 +236,4 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
         else:
             lead.pop("action_url", None)
         cleaned.append(lead)
-    return {"leads": cleaned, "model": settings.DISCOVERY_MODEL}
+    return {"leads": cleaned, "model": settings.DISCOVERY_MODEL, "source_findings": source_findings}
