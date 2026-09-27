@@ -12,7 +12,7 @@ from .discovery.profiles import query_signature
 class APITestBase(TestCase):
     def setUp(self):
         self.client=APIClient(); self.user=get_user_model().objects.create_user(username="testuser",password="testpass123"); self.client.force_authenticate(self.user)
-        self.lead=Lead.objects.create(title="Django Automation Engineer",description="Build a Django automation workflow.",source_url="https://example.com/jobs/1")
+        self.lead=Lead.objects.create(owner=self.user,title="Django Automation Engineer",description="Build a Django automation workflow.",source_url="https://example.com/jobs/1")
 
 class AuthTests(TestCase):
     def test_protected_endpoint_requires_auth(self): self.assertEqual(APIClient().get("/api/dashboard/").status_code,401)
