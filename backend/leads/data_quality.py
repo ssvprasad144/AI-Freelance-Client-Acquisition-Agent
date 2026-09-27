@@ -91,18 +91,37 @@ def validate_discovered_email(value):
     return email
 
 
-def source_supported_evidence(evidence, findings):
-    """Keep only evidence snippets that literally occur in retrieved findings."""
-    if not isinstance(evidence, list) or not isinstance(findings, str):
-        return []
-    accepted = []
-    cited_urls = set()
-    for candidate in re.findall(r"https?://[^\s\])}>]+", findings, flags=re.IGNORECASE):
-        candidate = candidate.rstrip(".,;:")
+def _source_excerpts_by_url(findings):
+    """Return validated citation excerpts keyed by their normalized URL."""
+    if not isinstance(findings, list):
+        return {}
+    excerpts_by_url = {}
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        url, excerpt = finding.get("url"), finding.get("excerpt")
+        if not isinstance(url, str) or not isinstance(excerpt, str) or not excerpt.strip():
+            continue
         try:
-            cited_urls.add(normalize_url(candidate))
+            normalized_url = normalize_url(url)
         except ValueError:
             continue
+        excerpts_by_url.setdefault(normalized_url, []).append(excerpt.strip())
+    return excerpts_by_url
+
+
+def source_supported_evidence(evidence, findings):
+    """Keep evidence only when its cited source contains the exact excerpt.
+
+    ``findings`` is intentionally a URL-to-excerpt collection built from Responses
+    API URL-citation annotations.  A combined text response cannot safely prove
+    which source supported a particular sentence, so legacy string findings never
+    grant source support.
+    """
+    if not isinstance(evidence, list) or not isinstance(findings, list):
+        return []
+    excerpts_by_url = _source_excerpts_by_url(findings)
+    accepted = []
     for row in evidence:
         if not isinstance(row, dict):
             continue
@@ -116,7 +135,8 @@ def source_supported_evidence(evidence, findings):
             normalized_source = normalize_url(source_url)
         except ValueError:
             continue
-        if (normalized_source not in cited_urls or excerpt.strip() not in findings
+        source_excerpts = excerpts_by_url.get(normalized_source, [])
+        if (not any(excerpt.strip() in source_excerpt for source_excerpt in source_excerpts)
                 or value.strip().casefold() not in excerpt.strip().casefold()):
             continue
         accepted.append({
@@ -151,6 +171,8 @@ def validate_lead_record(item, findings=""):
         raise ValueError("source must be a string no longer than 100 characters.")
     cleaned["source"] = source.strip() or "web_search"
     cleaned["source_url"] = normalize_url(cleaned.get("source_url"))
+    if isinstance(findings, list) and cleaned["source_url"] not in _source_excerpts_by_url(findings):
+        raise ValueError("source_url is not supported by URL-bound source findings.")
     cleaned["action_url"] = normalize_url(cleaned.get("action_url") or cleaned["source_url"])
     company_website = cleaned.get("company_website") or ""
     if company_website:
@@ -211,4 +233,3 @@ def validate_lead_record(item, findings=""):
     values.update({f"technologies.{index}": value for index, value in enumerate(cleaned["technologies"])})
     cleaned["evidence"] = [row for row in supported if values.get(row["field"], "").casefold() == row["value"].casefold()]
     return cleaned
-

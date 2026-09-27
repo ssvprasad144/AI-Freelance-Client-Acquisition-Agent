@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import Any
 
 from django.conf import settings
@@ -48,6 +49,42 @@ def _extract_json(text: str) -> dict[str, Any]:
         raise
 
 
+def _item_value(item, name, default=None):
+    return item.get(name, default) if isinstance(item, dict) else getattr(item, name, default)
+
+
+def _citation_excerpt(text: str, citation_start: int) -> str:
+    """Return the sentence immediately preceding a Responses URL citation."""
+    if not isinstance(text, str) or not isinstance(citation_start, int) or isinstance(citation_start, bool):
+        return ""
+    before = text[:max(0, citation_start)].strip()
+    if not before:
+        return ""
+    line = before.rsplit("\n", 1)[-1].strip()
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", line) if part.strip()]
+    return (sentences[-1] if sentences else line)[:2000]
+
+
+def _source_findings(response) -> list[dict[str, str]]:
+    """Preserve URL-citation annotation bindings from a Responses web search."""
+    findings = []
+    for output in _item_value(response, "output", []) or []:
+        if _item_value(output, "type") != "message":
+            continue
+        for content in _item_value(output, "content", []) or []:
+            if _item_value(content, "type") != "output_text":
+                continue
+            text = _item_value(content, "text", "") or ""
+            for annotation in _item_value(content, "annotations", []) or []:
+                if _item_value(annotation, "type") != "url_citation":
+                    continue
+                url = _item_value(annotation, "url")
+                excerpt = _citation_excerpt(text, _item_value(annotation, "start_index", 0))
+                if isinstance(url, str) and excerpt:
+                    findings.append({"url": url, "excerpt": excerpt})
+    return findings
+
+
 def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[str, Any]:
     if not settings.OPENAI_API_KEY:
         raise LiveDiscoveryError("OPENAI_API_KEY is required for live discovery.")
@@ -86,6 +123,7 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
         search_text = (search_response.output_text or "").strip()
         if not search_text:
             raise LiveDiscoveryError("Live discovery returned no search findings.")
+        source_findings = _source_findings(search_response)
 
         extraction_schema = {
             "type": "object",
@@ -163,7 +201,8 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
                     "role": "system",
                     "content": (
                         "Convert the grounded web-search findings into the requested schema. "
-                        "Use only facts and URLs present in the findings. Never invent URLs, "
+                        "Use only facts and URLs present in the source findings. Every evidence "
+                        "row must use the URL whose cited excerpt contains its exact claim. Never invent URLs, "
                         "companies, budgets, contacts, or opportunities. Return an empty "
                         "leads array when the findings do not contain suitable current opportunities."
                     ),
@@ -172,7 +211,7 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
                     "role": "user",
                     "content": json.dumps({
                         "search_request": prompt,
-                        "search_findings": search_text,
+                        "source_findings": source_findings,
                     }),
                 },
             ],
@@ -211,4 +250,4 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
         else:
             lead.pop("action_url", None)
         cleaned.append(lead)
-    return {"leads": cleaned, "model": settings.DISCOVERY_MODEL, "search_findings": search_text}
+    return {"leads": cleaned, "model": settings.DISCOVERY_MODEL, "search_findings": search_text, "source_findings": source_findings}
