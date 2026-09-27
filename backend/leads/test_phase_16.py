@@ -8,7 +8,7 @@ from .ai_service import _validated_analysis, _validated_proposal
 class Phase16Tests(TestCase):
     def setUp(self):
         self.api=APIClient(); user=get_user_model().objects.create_user(username="p16",password="pass123"); self.api.force_authenticate(user)
-        self.lead=Lead.objects.create(title="AI dashboard",description="Django React AI automation",source="direct",lead_type="direct",budget_text="$5000",technologies=["Django","React"])
+        self.lead=Lead.objects.create(owner=user,owner=user,title="AI dashboard",description="Django React AI automation",source="direct",lead_type="direct",budget_text="$5000",technologies=["Django","React"])
     def test_scoring_and_next_action(self):
         self.assertGreaterEqual(opportunity_score(self.lead),20)
         self.assertEqual(next_action(self.lead)["action"],"qualify")
