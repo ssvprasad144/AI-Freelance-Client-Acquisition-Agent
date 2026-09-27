@@ -6,7 +6,10 @@ class LeadAnalysisSerializer(serializers.ModelSerializer):
 
 class LeadSerializer(serializers.ModelSerializer):
     analysis=LeadAnalysisSerializer(read_only=True)
-    class Meta: model=Lead; fields="__all__"
+    class Meta:
+        model=Lead
+        fields="__all__"
+        read_only_fields=("owner","status","client","contact","normalized_title","normalized_url","discovered_at","created_at","updated_at")
 
 class OutreachSerializer(serializers.ModelSerializer):
     lead_title=serializers.CharField(source="lead.title",read_only=True)
@@ -57,7 +60,10 @@ class ClientSerializer(serializers.ModelSerializer):
     intelligence=ClientIntelligenceSerializer(read_only=True)
     lead_count=serializers.SerializerMethodField()
     def get_lead_count(self,obj): return obj.leads.count()
-    class Meta: model=Client; fields="__all__"
+    class Meta:
+        model=Client
+        fields="__all__"
+        read_only_fields=("owner","normalized_company","created_at","updated_at")
 
 class MeetingSerializer(serializers.ModelSerializer):
     client_company=serializers.CharField(source="client.company",read_only=True)
