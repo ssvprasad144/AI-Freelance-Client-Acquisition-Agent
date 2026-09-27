@@ -84,13 +84,10 @@ def me(request): return Response({"id":request.user.id,"username":request.user.u
 
 
 def _owned_leads(request):
-    # This deployment is intentionally single-user. Keep the helper name for
-    # compatibility with the existing API code, but expose the complete
-    # acquisition workspace to the authenticated account.
-    return Lead.objects.all()
+    return Lead.objects.filter(owner=request.user)
 
 def _owned_clients(request):
-    return Client.objects.all()
+    return Client.objects.filter(owner=request.user)
 
 def _owned_lead(request, pk):
     return _owned_leads(request).filter(pk=pk).first()
@@ -197,9 +194,11 @@ def create_reply(request,pk):
     return Response({**ReplySerializer(reply).data,"classification":classification},status=201)
 
 class LeadViewSet(viewsets.ModelViewSet):
-    queryset=Lead.objects.all().prefetch_related("analysis"); serializer_class=LeadSerializer
+    queryset=Lead.objects.all().prefetch_related("analysis")
+    serializer_class=LeadSerializer
+
     def get_queryset(self):
-        return Lead.objects.all().prefetch_related("analysis")
+        return Lead.objects.filter(owner=self.request.user).prefetch_related("analysis")
     @action(detail=True,methods=["post"],throttle_classes=[AIThrottle])
     def analyze(self,request,pk=None):
         lead=self.get_object(); data=analyze_lead(lead); analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data)
