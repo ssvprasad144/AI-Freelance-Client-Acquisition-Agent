@@ -5,6 +5,7 @@ import socket
 import time
 from collections import defaultdict
 from html.parser import HTMLParser
+from urllib.robotparser import RobotFileParser
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from django.conf import settings

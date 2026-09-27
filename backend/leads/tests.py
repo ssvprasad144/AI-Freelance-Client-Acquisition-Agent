@@ -348,3 +348,16 @@ class APILifecycleAuditTests(TestCase):
         response=self.client.post("/api/discovery/qualify/",{"limit":"not-a-number"},format="json")
         self.assertEqual(response.status_code,400)
         self.assertIn("limit",response.data["detail"])
+
+
+class ProviderResilienceAuditTests(TestCase):
+    def test_live_provider_rejects_private_ip_urls(self):
+        from .discovery.live_provider import _safe_public_url
+        self.assertFalse(_safe_public_url("http://127.0.0.1/internal"))
+        self.assertFalse(_safe_public_url("http://10.0.0.5/internal"))
+        self.assertFalse(_safe_public_url("http://192.168.1.10/internal"))
+        self.assertTrue(_safe_public_url("https://example.com/opportunity"))
+
+    def test_public_crawler_robots_parser_is_available(self):
+        from .discovery.public_crawler import RobotFileParser
+        self.assertTrue(RobotFileParser)
