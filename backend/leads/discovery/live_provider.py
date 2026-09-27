@@ -1,5 +1,6 @@
 import json
 import logging
+from urllib.parse import urlsplit
 from typing import Any
 
 from django.conf import settings
@@ -7,6 +8,17 @@ from openai import OpenAI
 
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_public_url(value):
+    try:
+        parts = urlsplit(str(value).strip())
+        if parts.scheme not in {"http", "https"} or not parts.hostname:
+            return False
+        host = parts.hostname.lower().rstrip(".")
+        return host not in {"localhost", "localhost.localdomain"} and not host.endswith(".local")
+    except (TypeError, ValueError):
+        return False
 
 
 class LiveDiscoveryError(Exception):
@@ -175,14 +187,16 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
 
     cleaned = []
     for lead in leads:
-        if not isinstance(lead, dict) or not lead.get("title") or not lead.get("description") or not lead.get("source_url"):
+        if not isinstance(lead, dict) or not lead.get("title") or not lead.get("description") or not lead.get("source_url") or not _safe_public_url(lead.get("source_url")):
             continue
         lead["source"] = lead.get("source") or "web_search"
         lead["lead_type"] = lead.get("lead_type") or "freelance"
         lead["technologies"] = lead.get("technologies") or []
         lead["contact_info"] = lead.get("contact_info") or {}
-        if lead.get("action_url") and isinstance(lead["action_url"], str):
+        if lead.get("action_url") and isinstance(lead["action_url"], str) and _safe_public_url(lead["action_url"]):
             lead["action_url"] = lead["action_url"].strip()
+        elif lead.get("action_url"):
+            lead.pop("action_url", None)
         else:
             lead.pop("action_url", None)
         cleaned.append(lead)

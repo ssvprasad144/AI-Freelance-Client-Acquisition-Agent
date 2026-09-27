@@ -65,3 +65,19 @@ class EndToEndPipelineTests(TestCase):
         sequence.refresh_from_db()
         self.assertEqual(sequence.status, "completed")
         self.assertEqual(FollowUp.objects.get(sequence=sequence).status, "cancelled")
+
+    @patch("leads.discovery_cycle.DiscoveryService.discover")
+    def test_discovery_rejects_unsafe_source_urls(self, discover):
+        discover.return_value = {
+            "source": "live", "model": "test",
+            "leads": [{
+                "title": "Private target",
+                "description": "Should never be stored.",
+                "source_url": "http://127.0.0.1/admin",
+            }],
+        }
+        from .discovery_cycle import run_discovery_cycle
+        result = run_discovery_cycle(query="unsafe", source="live", qualification_limit=5, profile_id="test-profile", owner=self.user)
+        self.assertEqual(result["created"], 0)
+        self.assertEqual(result["invalid"], 1)
+        self.assertFalse(Lead.objects.filter(owner=self.user, title="Private target").exists())
