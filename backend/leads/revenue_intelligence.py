@@ -42,8 +42,6 @@ def _money(value):
         raise ValueError("Revenue amounts must be valid non-negative numbers.")
 
 def upsert_revenue(lead,data):
-    if lead.status!="won" and float(data.get("won_value",0) or 0)>0:
-        raise ValueError("won_value can only be recorded for a won lead.")
     attr=attribution_for(lead); auto=automatic_costs(lead)
     currency=str(data.get("currency") or getattr(settings,"REVENUE_DEFAULT_CURRENCY","USD")).upper()[:3]
     obj,_=RevenueRecord.objects.update_or_create(lead=lead,defaults={
