@@ -63,5 +63,8 @@ LOGGING={
     "loggers":{
         "django":{"handlers":["console"],"level":os.getenv("DJANGO_LOG_LEVEL","INFO")},
         "django.request":{"handlers":["console"],"level":"WARNING","propagate":False},
+        "leads":{"handlers":["console"],"level":os.getenv("LEADS_LOG_LEVEL","INFO"),"propagate":False},
+        "leads.discovery.live_provider":{"handlers":["console"],"level":"WARNING","propagate":False},
+        "leads.discovery.public_crawler":{"handlers":["console"],"level":"WARNING","propagate":False},
     },
 }
