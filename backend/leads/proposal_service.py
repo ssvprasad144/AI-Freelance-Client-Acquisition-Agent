@@ -88,7 +88,8 @@ def revise_proposal(proposal, instruction: str, source="ai"):
             },
         )
     number = proposal.versions.order_by("-version_number").values_list("version_number", flat=True).first() or 0
-    text = _validate_proposal_text(text)\n    version = ProposalVersion.objects.create(proposal=proposal, version_number=number + 1, content=text, source=source, instruction=instruction)
+    text = _validate_proposal_text(text)
+    version = ProposalVersion.objects.create(proposal=proposal, version_number=number + 1, content=text, source=source, instruction=instruction)
     proposal.current_version = version.version_number
     proposal.status = "draft"
     proposal.save(update_fields=["current_version","status","updated_at"])
