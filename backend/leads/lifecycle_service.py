@@ -1,5 +1,5 @@
 from django.db.models import Q
-from .models import Lead, Client, FollowUp, Outreach, Proposal, RevenueRecord, AcquisitionOpportunity
+from .models import Lead, Client, FollowUp, Outreach, Proposal, RevenueRecord, AcquisitionOpportunity, Meeting
 
 TERMINAL_STATUSES={"won","lost","archived"}
 ACTIVE_FOLLOWUP_STATUSES={"draft","approved","due","sending"}
@@ -13,6 +13,8 @@ def validate_pipeline_invariants(lead):
         violations.append("lead_owner_missing")
     if lead.client_id and lead.client and lead.client.owner_id != lead.owner_id:
         violations.append("client_owner_mismatch")
+    if lead.contact_id and not lead.client_id:
+        violations.append("contact_without_client")
     if lead.contact_id and lead.contact and lead.client_id and lead.contact.client_id != lead.client_id:
         violations.append("contact_client_mismatch")
     if lead.status in TERMINAL_STATUSES:
@@ -41,6 +43,19 @@ def validate_workspace(owner):
     for lead in leads:
         for code in validate_pipeline_invariants(lead):
             report["violations"].append({"lead_id":lead.id,"code":code})
+    for client in Client.objects.filter(owner=owner):
+        if client.leads.exclude(owner=owner).exists():
+            report["violations"].append({"client_id":client.id,"code":"client_has_cross_owner_lead"})
+        for contact in client.contacts.all():
+            if contact.leads.filter(client__isnull=True).exists():
+                report["violations"].append({"client_id":client.id,"contact_id":contact.id,"code":"contact_lead_without_client"})
+            if contact.leads.exclude(client=client).exists():
+                report["violations"].append({"client_id":client.id,"contact_id":contact.id,"code":"contact_lead_client_mismatch"})
+        for meeting in Meeting.objects.filter(Q(lead__client=client)|Q(client=client)):
+            if meeting.lead_id and meeting.client_id and meeting.lead.client_id != meeting.client_id:
+                report["violations"].append({"client_id":client.id,"meeting_id":meeting.id,"code":"meeting_lead_client_mismatch"})
+            if meeting.contact_id and meeting.contact.client_id != client.id:
+                report["violations"].append({"client_id":client.id,"meeting_id":meeting.id,"code":"meeting_contact_client_mismatch"})
     orphan_clients=Client.objects.filter(owner__isnull=True).count()
     orphan_leads=Lead.objects.filter(owner__isnull=True).count()
     report["ownerless_records"]={"leads":orphan_leads,"clients":orphan_clients}
