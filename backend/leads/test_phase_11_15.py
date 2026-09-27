@@ -10,8 +10,8 @@ from .learning import refresh_learning
 class Phase1115Tests(TestCase):
     def setUp(self):
         self.client=APIClient()
-        user=get_user_model().objects.create_user(username="phase1115",password="pass1234")
-        self.client.force_authenticate(user)
+        self.user=get_user_model().objects.create_user(username="phase1115",password="pass1234")
+        self.client.force_authenticate(self.user)
         self.lead=Lead.objects.create(owner=user,
             title="AI automation dashboard",description="Build a Django React AI automation dashboard.",
             company="Acme Labs",source="linkedin",source_url="https://linkedin.com/jobs/view/1",
