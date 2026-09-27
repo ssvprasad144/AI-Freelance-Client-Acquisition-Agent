@@ -1,4 +1,5 @@
-from django.db import migrations, models\nfrom django.utils import timezone
+from django.db import migrations, models
+from django.utils import timezone
 
 
 class Migration(migrations.Migration):
