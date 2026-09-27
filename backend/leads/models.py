@@ -22,10 +22,17 @@ class Lead(models.Model):
     def __str__(self): return self.title
 
     def save(self,*args,**kwargs):
-        # Keep the application-level lookup identity aligned with the database guard.
+        # Preserve migration-created blank identity keys on legacy duplicate rows
+        # when an unrelated field is edited. Rebuild the key when the identity
+        # source itself changes or when this is a new record.
+        existing=None
+        if self.pk:
+            existing=type(self).objects.filter(pk=self.pk).values("source_url","normalized_url").first()
         if self.source_url:
             from .data_quality import normalize_url
-            self.normalized_url=normalize_url(self.source_url)
+            source_changed=not existing or existing["source_url"] != self.source_url
+            if source_changed or existing["normalized_url"]:
+                self.normalized_url=normalize_url(self.source_url)
         if self.title:
             self.normalized_title=" ".join(re.sub(r"[^a-z0-9 ]"," ",self.title.lower()).split())
         update_fields=kwargs.get("update_fields")
@@ -35,7 +42,6 @@ class Lead(models.Model):
             if "title" in fields: fields.add("normalized_title")
             kwargs["update_fields"]=fields
         super().save(*args,**kwargs)
-
 
 class LeadEvidence(models.Model):
     ORIGINS=[("extracted","Extracted"),("ai_inferred","AI inferred"),("crawler","Retrieved page")]
@@ -227,9 +233,16 @@ class Contact(models.Model):
         ]
 
     def save(self,*args,**kwargs):
-        self.email=(self.email or "").strip().casefold()
-        self.normalized_email=self.email
-        self.normalized_profile_url=(self.profile_url or "").strip().rstrip("/").casefold()
+        existing=None
+        if self.pk:
+            existing=type(self).objects.filter(pk=self.pk).values("email","profile_url","normalized_email","normalized_profile_url").first()
+        normalized_email=(self.email or "").strip().casefold()
+        normalized_profile=(self.profile_url or "").strip().rstrip("/").casefold()
+        self.email=normalized_email
+        if not existing or existing["email"] != self.email or existing["normalized_email"]:
+            self.normalized_email=normalized_email
+        if not existing or existing["profile_url"] != self.profile_url or existing["normalized_profile_url"]:
+            self.normalized_profile_url=normalized_profile
         if kwargs.get("update_fields") is not None:
             fields=set(kwargs["update_fields"])
             if "email" in fields: fields.add("normalized_email")
