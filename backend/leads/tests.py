@@ -158,3 +158,17 @@ class OutboundAmbiguousDeliveryTests(TestCase):
         followup=FollowUp.objects.create(lead=lead,scheduled_at=timezone.now(),message="Test",status="send_uncertain")
         with self.assertRaises(ValueError): send_email(outreach)
         with self.assertRaises(ValueError): send_followup(followup)
+class DatabaseIntegrityAuditTests(TestCase):
+    def test_learning_stat_uniqueness_is_scoped_to_owner(self):
+        owner=get_user_model().objects.create_user(username="learning-db-owner-a",password="pass12345")
+        other=get_user_model().objects.create_user(username="learning-db-owner-b",password="pass12345")
+        LearningStat.objects.create(owner=owner,dimension="source",key="shared-key",attempts=2)
+        LearningStat.objects.create(owner=other,dimension="source",key="shared-key",attempts=3)
+        self.assertEqual(LearningStat.objects.filter(dimension="source",key="shared-key").count(),2)
+
+    def test_learning_stat_duplicate_for_same_owner_is_rejected(self):
+        from django.db import IntegrityError
+        owner=get_user_model().objects.create_user(username="learning-db-owner-c",password="pass12345")
+        LearningStat.objects.create(owner=owner,dimension="source",key="same-key",attempts=1)
+        with self.assertRaises(IntegrityError):
+            LearningStat.objects.create(owner=owner,dimension="source",key="same-key",attempts=2)
