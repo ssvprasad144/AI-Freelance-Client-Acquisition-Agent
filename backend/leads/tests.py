@@ -265,3 +265,15 @@ class Phase16To18LifecycleVerificationTests(TestCase):
         response=Client().get("/api/health/")
         self.assertEqual(response.status_code,503)
         self.assertEqual(response.json()["observability"]["recent_failures_1h"],1)
+
+
+class Phase13LearningSignalTests(TestCase):
+    def test_sparse_learning_bucket_has_no_reward_signal(self):
+        user=get_user_model().objects.create_user(username="learning-owner",password="pass12345")
+        Lead.objects.create(owner=user,title="Sparse lead",description="Test",source_url="https://example.com/sparse",source="test")
+        from .learning import refresh_learning
+        refresh_learning(owner=user)
+        stat=LearningStat.objects.filter(dimension="source",key="test").first()
+        self.assertIsNotNone(stat)
+        self.assertEqual(stat.attempts,1)
+        self.assertEqual(stat.reward,0)
