@@ -81,3 +81,50 @@ class LeadCreationOwnershipTests(TestCase):
         )
         self.assertEqual(response.status_code,201)
         self.assertEqual(Lead.objects.get(pk=response.data["id"]).owner_id,owner.id)
+
+class DataIntegrityAuditTests(TestCase):
+    def test_optimization_report_is_owner_scoped(self):
+        from .models import RevenueRecord
+        from .revenue_intelligence import optimization_report, refresh_revenue_learning
+        owner=get_user_model().objects.create_user(username="integrity-owner",password="pass12345")
+        other=get_user_model().objects.create_user(username="integrity-other",password="pass12345")
+        lead_a=Lead.objects.create(owner=owner,title="Owner opportunity",description="A",source_url="https://example.com/a",status="won",source="owner")
+        lead_b=Lead.objects.create(owner=other,title="Other opportunity",description="B",source_url="https://example.com/b",status="won",source="other")
+        RevenueRecord.objects.create(lead=lead_a,won_value=100,source="owner")
+        RevenueRecord.objects.create(lead=lead_b,won_value=900,source="other")
+        LearningStat.objects.create(owner=owner,dimension="source",key="owner",attempts=2)
+        LearningStat.objects.create(owner=other,dimension="source",key="other",attempts=2)
+        refresh_revenue_learning(owner=owner)
+        report=optimization_report(owner=owner)
+        self.assertEqual(len(report),1)
+        self.assertEqual(report[0]["key"],"owner")
+        self.assertEqual(report[0]["reward"],100)
+
+    def test_workspace_detects_cross_owner_relationships(self):
+        from .models import Client, Contact
+        from .lifecycle_service import validate_workspace
+        owner=get_user_model().objects.create_user(username="workspace-owner",password="pass12345")
+        other=get_user_model().objects.create_user(username="workspace-other",password="pass12345")
+        client=Client.objects.create(owner=owner,company="Owner Co",normalized_company="owner co")
+        other_lead=Lead.objects.create(owner=other,title="Cross owner",description="X",source_url="https://example.com/x",client=client)
+        contact=Contact.objects.create(client=client,name="Contact")
+        other_lead.contact=contact
+        other_lead.save(update_fields=["contact","updated_at"])
+        report=validate_workspace(owner)
+        codes={row["code"] for row in report["violations"]}
+        self.assertIn("client_has_cross_owner_lead",codes)
+
+        other_client=Client.objects.create(owner=other,company="Other Co",normalized_company="other co")
+        wrong_contact=Contact.objects.create(client=other_client,name="Wrong Contact")
+        Lead.objects.create(owner=owner,title="Wrong contact",description="Y",source_url="https://example.com/y",client=client,contact=wrong_contact)
+        refreshed_codes={row["code"] for row in validate_workspace(owner)["violations"]}
+        self.assertIn("contact_client_mismatch",refreshed_codes)
+
+    def test_pipeline_detects_contact_without_client(self):
+        from .models import Contact, Client
+        from .lifecycle_service import validate_pipeline_invariants
+        owner=get_user_model().objects.create_user(username="pipeline-owner",password="pass12345")
+        client=Client.objects.create(owner=owner,company="Client",normalized_company="client")
+        contact=Contact.objects.create(client=client,name="Contact")
+        lead=Lead.objects.create(owner=owner,title="Bad relation",description="X",source_url="https://example.com/x",contact=contact)
+        self.assertIn("contact_without_client",validate_pipeline_invariants(lead))

@@ -70,18 +70,20 @@ def revenue_metrics(owner=None):
       "by_source":grouped("source"),"by_profile":grouped("profile_id"),"by_strategy":grouped("strategy_id"),"by_domain":grouped("domain"),"by_query_family":grouped("query_family"),"by_channel":grouped("channel"),"by_variant":grouped("message_variant"),
       "pipeline":{"leads":len(pipeline),"meetings":sum(r.lead.meetings.filter(status__in=["requested","scheduled"]).count() for r in pipeline),"won":sum(r.lead.status=="won" for r in records)}}
 
-def refresh_revenue_learning():
-    metrics=revenue_metrics()
-    for stat in LearningStat.objects.all():
+def refresh_revenue_learning(owner=None):
+    metrics=revenue_metrics(owner=owner)
+    stats=LearningStat.objects.all() if owner is None else LearningStat.objects.filter(owner=owner)
+    for stat in stats:
         if stat.dimension in {"source","profile","strategy","domain"}:
             field={"source":"source","profile":"profile_id","strategy":"strategy_id","domain":"domain"}[stat.dimension]
-            stat.reward=sum(to_reporting(r.won_value,r.currency) for r in RevenueRecord.objects.filter(**{field:stat.key}))
+            records=RevenueRecord.objects.filter(lead__owner=stat.owner)
+            stat.reward=sum(to_reporting(r.won_value,r.currency) for r in records.filter(**{field:stat.key}))
         elif stat.dimension=="query":
-            stat.reward=sum(to_reporting(r.won_value,r.currency) for r in RevenueRecord.objects.filter(lead__discovery_query=stat.key))
+            records=RevenueRecord.objects.filter(lead__owner=stat.owner)
+            stat.reward=sum(to_reporting(r.won_value,r.currency) for r in records.filter(lead__discovery_query=stat.key))
         stat.save(update_fields=["reward","updated_at"])
     return metrics
 
 def optimization_report(owner=None):
-    # LearningStat is intentionally global for the current single-owner deployment.
-    # Revenue metrics themselves are owner-scoped at the lead boundary.
-    return [{"dimension":s.dimension,"key":s.key,"attempts":s.attempts,"qualified":s.qualified,"proposals":s.proposals,"sent":s.sent,"replies":s.replies,"meetings":s.meetings,"wins":s.wins,"losses":s.losses,"reward":round(s.reward,2),"win_rate":round(s.wins/max(s.attempts,1)*100,2)} for s in LearningStat.objects.order_by("-reward","-attempts")[:100]]
+    stats=LearningStat.objects.all() if owner is None else LearningStat.objects.filter(owner=owner)
+    return [{"dimension":s.dimension,"key":s.key,"attempts":s.attempts,"qualified":s.qualified,"proposals":s.proposals,"sent":s.sent,"replies":s.replies,"meetings":s.meetings,"wins":s.wins,"losses":s.losses,"reward":round(s.reward,2),"win_rate":round(s.wins/max(s.attempts,1)*100,2)} for s in stats.order_by("-reward","-attempts")[:100]]
