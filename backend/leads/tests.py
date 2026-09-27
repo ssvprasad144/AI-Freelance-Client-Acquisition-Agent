@@ -361,3 +361,38 @@ class ProviderResilienceAuditTests(TestCase):
     def test_public_crawler_robots_parser_is_available(self):
         from .discovery.public_crawler import RobotFileParser
         self.assertTrue(RobotFileParser)
+
+
+class ProductionSmokeAuditTests(TestCase):
+    def setUp(self):
+        self.user=get_user_model().objects.create_user(username="production-smoke-owner",password="StrongPass123!")
+        self.client=APIClient()
+
+    def test_health_endpoint_reports_cron_jobs(self):
+        response=self.client.get("/api/health/")
+        self.assertIn(response.status_code,[200,503])
+        self.assertIn("cron_jobs",response.json())
+        self.assertNotIn("workers",response.json())
+
+    def test_authenticated_core_api_smoke_path(self):
+        login=self.client.post("/api/auth/login/",{"username":"production-smoke-owner","password":"StrongPass123!"},format="json")
+        self.assertEqual(login.status_code,200)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {login.data['token']}")
+        dashboard=self.client.get("/api/dashboard/")
+        self.assertEqual(dashboard.status_code,200)
+        leads=self.client.get("/api/leads/")
+        self.assertEqual(leads.status_code,200)
+
+    @patch("leads.management.commands.run_discovery_cycle.run_discovery_cycle")
+    def test_discovery_cron_command_is_one_shot_and_records_completion(self,mock_run):
+        mock_run.return_value={"profile_id":"smoke","cached":False,"discovered":0,"created":0,"analyzed":0,"qualified":0}
+        call_command("run_discovery_cycle",source="mock")
+        self.assertEqual(mock_run.call_count,1)
+        self.assertTrue(ActivityLog.objects.filter(event_type="cron.discovery.completed").exists())
+
+    @patch("leads.management.commands.process_due_followups.process_due_followups")
+    def test_followup_cron_command_is_one_shot_and_records_completion(self,mock_process):
+        mock_process.return_value={"processed":0,"due":0,"sent":0}
+        call_command("process_due_followups")
+        self.assertEqual(mock_process.call_count,1)
+        self.assertTrue(ActivityLog.objects.filter(event_type="cron.followup.completed").exists())

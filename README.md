@@ -39,7 +39,7 @@ Status changes are explicit user actions. Reply tracking is manual and does not 
 
 ## Outreach safety
 
-Proposal approval and follow-up approval do not send external messages. The follow-up worker only moves approved follow-ups to due.
+Proposal approval and follow-up approval do not send external messages. The follow-up cron only processes approved follow-ups that are due; it does not run continuously.
 
 ## API
 
@@ -62,13 +62,13 @@ Proposal approval and follow-up approval do not send external messages. The foll
 
 List endpoints are paginated with a default page size of 50 and a maximum of 100.
 
-## Workers and monitoring
+## Cron jobs and monitoring
 
-The discovery and follow-up workers write heartbeat and error events. GET /api/health/ exposes worker status so hosting and operators can detect stale workers.
+The discovery and follow-up Render Cron Jobs write start, completion and failure events. GET /api/health/ exposes cron-job freshness and recent failure state so hosting and operators can detect missed or stale scheduled runs.
 
-Discovery defaults to one cycle per hour. Follow-up processing defaults to every 60 seconds.
+Production Render schedules are: discovery every 6 hours and follow-up processing every 30 minutes.
 
-Neither worker sends external communication.
+Neither cron job sends external communication automatically.
 
 ## Frontend
 
@@ -80,12 +80,12 @@ The React/Vite frontend includes:
 - reply tracking
 - follow-up scheduling and approval
 - due-action queue
-- worker health visibility
+- cron-job health visibility
 - responsive production UI
 
 ## Production deployment
 
-The backend supports PostgreSQL through DATABASE_URL, production HTTPS settings, and Gunicorn. render.yaml defines the API, discovery worker, follow-up worker and frontend static site.
+The backend supports PostgreSQL through DATABASE_URL, production HTTPS settings, and Gunicorn. render.yaml defines the API plus the discovery and follow-up Render Cron Jobs. The React/Vite frontend is built separately and must receive VITE_API_BASE_URL from its hosting environment.
 
 Required hosting values include DJANGO_SECRET_KEY, DATABASE_URL, OPENAI_API_KEY, ALLOWED_HOSTS, CORS_ALLOWED_ORIGINS, and frontend VITE_API_BASE_URL.
 
@@ -112,7 +112,7 @@ GitHub Actions runs both backend tests and the frontend production build on push
 
 The acquisition layer now includes:
 - four discovery profiles covering AI/automation, Django/full-stack, interactive web and startup MVP opportunities
-- automated multi-profile discovery worker
+- automated multi-profile discovery cron
 - evidence-based proposal personalization using the actual profile/project knowledge
 - reply intent/sentiment classification with a deterministic fallback when AI is unavailable
 - acquisition funnel analytics at `/api/analytics/`
@@ -143,7 +143,7 @@ The crawler uses Python's standard library, so no additional scraping framework 
 
 ### Discovery cost optimization
 
-Automated discovery uses a rotating set of four focused profiles. The worker runs one profile per cycle and uses measured search performance to balance exploration of under-tested profiles with exploitation of higher-yield profiles.
+Automated discovery uses a rotating set of four focused profiles. The discovery cron runs one profile per cycle and uses measured search performance to balance exploration of under-tested profiles with exploitation of higher-yield profiles.
 
 The discovery pipeline is:
 
@@ -162,7 +162,7 @@ Default production settings:
 - proposals allowed only for qualified leads
 - outbound communication remains approval/provider gated
 
-The worker now measures qualified leads per search, created leads per search, replies per search, and wins per search. Profiles with fewer than the configured exploration minimum are tested first; after that, higher measured yield receives priority. The default learning window is 30 days. This keeps search spend bounded while progressively concentrating the budget on better-performing discovery strategies without permanently starving newer strategies.
+The discovery cron now measures qualified leads per search, created leads per search, replies per search, and wins per search. Profiles with fewer than the configured exploration minimum are tested first; after that, higher measured yield receives priority. The default learning window is 30 days. This keeps search spend bounded while progressively concentrating the budget on better-performing discovery strategies without permanently starving newer strategies.
 
 ### Web-search cost intelligence v2
 
