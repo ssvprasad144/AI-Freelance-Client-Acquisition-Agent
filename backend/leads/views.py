@@ -11,7 +11,7 @@ from rest_framework.decorators import action, api_view, permission_classes, thro
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from .throttles import AIThrottle, DiscoveryThrottle, LoginThrottle
-from .ai_service import analyze_lead, generate_proposal
+from .ai_service import analyze_lead, analysis_fingerprint, generate_proposal
 from .discovery.live_provider import LiveDiscoveryError
 from .discovery.mock_provider import DiscoveryError
 from .discovery.service import DiscoveryService
@@ -219,6 +219,8 @@ class LeadViewSet(viewsets.ModelViewSet):
     def proposal(self,request,pk=None):
         lead=self.get_object(); analysis=getattr(lead,"analysis",None)
         if not analysis:return Response({"detail":"Analyze the lead first."},status=400)
+        if analysis.input_fingerprint and analysis.input_fingerprint != analysis_fingerprint(lead):
+            return Response({"detail":"Lead changed after analysis. Re-analyze before generating a proposal."},status=409)
         if not (analysis.relevant and analysis.match_score>=settings.QUALIFICATION_MIN_SCORE):
             return Response({"detail":f"Only qualified leads can generate proposals. Required score: {settings.QUALIFICATION_MIN_SCORE}."},status=400)
         delivery=_proposal_delivery(lead)
