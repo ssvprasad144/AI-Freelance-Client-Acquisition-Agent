@@ -166,6 +166,9 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
         if analysis.relevant and analysis.match_score>=settings.QUALIFICATION_MIN_SCORE:
             lead.status="qualified"; lead.save(update_fields=["status","updated_at"]); qualified+=1
             ActivityLog.objects.create(lead=lead,event_type="lead.auto_qualified",message=f"Lead auto-qualified with score {analysis.match_score}.",metadata={"model":analysis.model,"match_score":analysis.match_score,"threshold":settings.QUALIFICATION_MIN_SCORE})
+    from .acquisition_orchestrator import ensure_opportunity
+    for lead in candidates:
+        ensure_opportunity(lead)
     _refresh_domain_outcomes(items)
     actual_search=bool(source=="live" and not (cache_fresh or reused_cache))
     payload=_payload(query,profile_id,source=result.get("source",source) if 'result' in locals() else source,model=result.get("model","unknown") if 'result' in locals() else "cached",cached=not actual_search,searched=actual_search,reused=bool(reused_cache),discovered=len(items),created=created,duplicates=duplicates,invalid=invalid,analyzed=analyzed,qualified=qualified,locally_filtered=locally_filtered,ai_calls=analyzed-locally_filtered,ai_input_tokens=ai_input_tokens,ai_output_tokens=ai_output_tokens,raw_results=raw_results,valid_results=valid_results,unique_results=len(seen),scored_candidates=len(ranked),crawled_candidates=crawled_candidates,strategy_id=strategy_id,query_variant=(selected or {}).get("query_variant","base"),context_size=(selected or {}).get("context_size",settings.DISCOVERY_SEARCH_CONTEXT_SIZE))
