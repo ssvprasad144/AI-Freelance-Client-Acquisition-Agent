@@ -84,6 +84,8 @@ services:
         value: "1800"
       - key: SECURE_SSL_REDIRECT
         value: "true"
+      - key: SECURE_HSTS_PRELOAD
+        value: "true"
 
   - type: cron
     name: ai-freelance-client-agent-discovery-cron
