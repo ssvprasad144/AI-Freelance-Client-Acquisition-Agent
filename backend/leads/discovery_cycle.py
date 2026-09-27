@@ -1,3 +1,4 @@
+import hashlib
 import re
 from urllib.parse import urlsplit
 from ipaddress import ip_address
@@ -15,7 +16,8 @@ from .discovery.profiles import (
 )
 from .discovery.service import DiscoveryService
 from .lead_optimizer import ai_skip_analysis, local_lead_score, should_ai_qualify
-from .models import ActivityLog, DiscoveryDomainStat, DiscoveryQueryCache, DiscoverySearchStat, Lead, LeadAnalysis
+from .data_quality import source_supported_evidence
+from .models import ActivityLog, DiscoveryDomainStat, DiscoveryQueryCache, DiscoverySearchStat, Lead, LeadAnalysis, LeadEvidence
 
 
 def _normalize_title(value):
@@ -46,8 +48,9 @@ def _domain(value):
     try: return urlsplit(str(value)).netloc.lower().removeprefix("www.")
     except Exception: return ""
 
-def _store(items,profile_id="",strategy_id="",query="",owner=None):
+def _store(items,profile_id="",strategy_id="",query="",owner=None,source_findings=None):
     created=duplicates=invalid=0
+    source_findings=source_findings or []
     with transaction.atomic():
         for item in items:
             if not item.get("title") or not item.get("description") or not _safe_public_url(item.get("source_url")): invalid+=1; continue
@@ -58,7 +61,16 @@ def _store(items,profile_id="",strategy_id="",query="",owner=None):
                 if item.get("expires_at"): existing.expires_at=item.get("expires_at")
                 if item.get("action_url"): existing.action_url=item.get("action_url")
                 existing.save(update_fields=["last_verified_at","expires_at","action_url","updated_at"]); duplicates+=1; continue
-            Lead.objects.create(owner=owner,title=item["title"],normalized_title=nt,normalized_url=nu,company=item.get("company",""),description=item["description"],source=item.get("source") or "web_search",source_url=item["source_url"],action_url=item.get("action_url") or item["source_url"],lead_type=item.get("lead_type","freelance"),budget_text=item.get("budget_text",""),technologies=item.get("technologies") or [],contact_info=item.get("contact_info") or {},discovery_profile=profile_id,discovery_strategy=strategy_id,discovery_query=query,discovered_at=timezone.now(),posted_at=item.get("posted_at") or None,expires_at=item.get("expires_at") or None,last_verified_at=timezone.now()); created+=1
+            lead=Lead.objects.create(owner=owner,title=item["title"],normalized_title=nt,normalized_url=nu,company=item.get("company",""),description=item["description"],source=item.get("source") or "web_search",source_url=item["source_url"],action_url=item.get("action_url") or item["source_url"],lead_type=item.get("lead_type","freelance"),budget_text=item.get("budget_text",""),technologies=item.get("technologies") or [],contact_info=item.get("contact_info") or {},discovery_profile=profile_id,discovery_strategy=strategy_id,discovery_query=query,discovered_at=timezone.now(),posted_at=item.get("posted_at") or None,expires_at=item.get("expires_at") or None,last_verified_at=timezone.now())
+            for field in ("title","company","description","budget_text","source_url","action_url"):
+                value=item.get(field)
+                if value in (None, "", [], {}):
+                    continue
+                supported=source_supported_evidence(value,item.get("source_url",""),source_findings)
+                fingerprint=hashlib.sha256(("%s|%s|%s" % (field,value,item.get("source_url",""))).encode("utf-8")).hexdigest()
+                excerpt=next((f.get("excerpt","") for f in source_findings if isinstance(f,dict) and _normalize_url(f.get("url",""))==nu and str(value).lower() in str(f.get("excerpt","")).lower()),"")
+                LeadEvidence.objects.create(lead=lead,field_name=field,value=str(value),evidence_hash=fingerprint,source_url=item.get("source_url",""),excerpt=excerpt,origin="extracted" if supported else "ai_inferred",validation_status="validated" if supported else "unvalidated",source_supported=supported,metadata={"source_attribution":"url_bound"})
+            created+=1
     return created,duplicates,invalid
 
 def _fresh_qualified_inventory(owner=None):
@@ -139,6 +151,7 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
         reused_cache=_find_semantic_reuse(query,profile_id,strategy_id)
     if cache_fresh or reused_cache:
         source_cache=cache if cache_fresh else reused_cache
+        source_findings=list(source_cache.source_findings or [])
         items=list(source_cache.result_payload or [])
         if not items and cache_fresh:
             payload=_payload(query,profile_id,source=source,cached=True,skip_reason="fresh query cache",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.cache_hit",message="Discovery query served from freshness cache; no web search performed.",metadata=payload); return payload
@@ -173,9 +186,9 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
         if crawl_candidates:
             from .discovery.public_crawler import enrich_leads
             enriched=enrich_leads(crawl_candidates,max_leads=len(crawl_candidates)); enriched_by_url={_normalize_url(item["source_url"]):item for item in enriched}; items=[enriched_by_url.get(_normalize_url(item.get("source_url","")),item) for item in items]
-    created,duplicates,invalid=_store(items,profile_id=profile_id,strategy_id=strategy_id,query=query,owner=owner)
+    created,duplicates,invalid=_store(items,profile_id=profile_id,strategy_id=strategy_id,query=query,owner=owner,source_findings=source_findings)
     domains=_update_domain_stats(items,actual_search=bool(source=="live" and not (cache_fresh or reused_cache)))
-    cache_defaults={"query":query,"searched_at":timezone.now(),"result_count":len(items),"query_family":query_family(profile_id,strategy_id),"query_signature":query_signature(query),"result_payload":items[:settings.DISCOVERY_MAX_RESULTS],"source_domains":domains}
+    cache_defaults={"query":query,"searched_at":timezone.now(),"result_count":len(items),"query_family":query_family(profile_id,strategy_id),"query_signature":query_signature(query),"result_payload":items[:settings.DISCOVERY_MAX_RESULTS],"source_domains":domains,"source_findings":source_findings}
     DiscoveryQueryCache.objects.update_or_create(profile_id=profile_id,normalized_query=normalized,defaults=cache_defaults)
     limit=min(qualification_limit or settings.DISCOVERY_MAX_RESULTS,settings.AI_QUALIFICATION_MAX_LEADS_PER_CYCLE); now=timezone.now()
     candidates=list(Lead.objects.filter(owner=owner,status="new",analysis__isnull=True,discovered_at__gte=cycle_started).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).order_by("-discovered_at","-created_at")[:limit])
