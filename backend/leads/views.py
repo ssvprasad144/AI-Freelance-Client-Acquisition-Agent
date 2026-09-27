@@ -132,8 +132,8 @@ def followups(request): return _paginate(request,FollowUp.objects.filter(lead__o
 def create_followup(request,pk=None):
     lead_id=pk or request.data.get("lead_id")
     if not lead_id:return Response({"detail":"lead_id is required."},status=400)
-    try:lead=_owned_lead(request, lead_id)
-    except Lead.DoesNotExist:return Response({"detail":"Lead not found."},status=404)
+    lead=_owned_lead(request, lead_id)
+    if not lead:return Response({"detail":"Lead not found."},status=404)
     scheduled=request.data.get("scheduled_at"); message=str(request.data.get("message") or "").strip()
     if not scheduled or not message:return Response({"detail":"scheduled_at and message are required."},status=400)
     followup=FollowUp.objects.create(lead=lead,scheduled_at=scheduled,message=message,status="draft")
@@ -175,8 +175,8 @@ def replies(request): return _paginate(request,Reply.objects.filter(lead__owner=
 
 @api_view(["POST"])
 def create_reply(request,pk):
-    try:lead=_owned_lead(request, pk)
-    except Lead.DoesNotExist:return Response({"detail":"Lead not found."},status=404)
+    lead=_owned_lead(request, pk)
+    if not lead:return Response({"detail":"Lead not found."},status=404)
     message=str(request.data.get("message") or "").strip()
     if not message:return Response({"detail":"message is required."},status=400)
     reply=Reply.objects.create(lead=lead,channel=str(request.data.get("channel") or "email"),message=message,intent="needs_review")
@@ -263,8 +263,8 @@ def edit_proposal(request, pk):
 
 @api_view(["POST"])
 def revise_proposal_view(request, pk):
-    try: proposal=Proposal.objects.get(pk=pk)
-    except Proposal.DoesNotExist: return Response({"detail":"Proposal not found."},status=404)
+    proposal=Proposal.objects.filter(lead__owner=request.user,pk=pk).first()
+    if not proposal: return Response({"detail":"Proposal not found."},status=404)
     try: version=revise_proposal(proposal,str(request.data.get("instruction") or ""))
     except ValueError as exc: return Response({"detail":str(exc)},status=400)
     proposal.outreach.update(message=version.content,status="draft")
@@ -272,8 +272,9 @@ def revise_proposal_view(request, pk):
 
 @api_view(["POST"])
 def restore_proposal_version(request, pk):
-    try: proposal=Proposal.objects.get(pk=pk); version=restore_version(proposal,int(request.data.get("version_number")))
-    except Proposal.DoesNotExist: return Response({"detail":"Proposal not found."},status=404)
+    proposal=Proposal.objects.filter(lead__owner=request.user,pk=pk).first()
+    if not proposal: return Response({"detail":"Proposal not found."},status=404)
+    try: version=restore_version(proposal,int(request.data.get("version_number")))
     except (ValueError,TypeError): return Response({"detail":"Valid version_number is required."},status=400)
     proposal.outreach.update(message=version.content,status="draft")
     return Response({**ProposalSerializer(proposal).data,"current_content":version.content})
@@ -387,10 +388,10 @@ def open_outreach(request,pk):
 
 @api_view(["POST"])
 def mark_outreach_submitted(request,pk):
-    try: item=Outreach.objects.get(pk=pk)
-    except Outreach.DoesNotExist: return Response({"detail":"Outreach not found."},status=404)
+    item=Outreach.objects.filter(lead__owner=request.user,pk=pk).first()
+    if not item: return Response({"detail":"Outreach not found."},status=404)
     if item.medium=="email": return Response({"detail":"Email outreach must be sent through the email action."},status=400)
-    claimed=Outreach.objects.filter(pk=pk,status__in=["draft","approved","opened"]).update(status="sending")
+    claimed=Outreach.objects.filter(lead__owner=request.user,pk=pk,status__in=["draft","approved","opened"]).update(status="sending")
     if not claimed: return Response({"detail":"Outreach is not actionable or has already been submitted."},status=409)
     item.refresh_from_db()
     item.status="submitted"; item.submitted_at=timezone.now()
@@ -411,7 +412,7 @@ def dashboard(request):
     return JsonResponse({"opportunities":active.count(),"qualified":_owned_leads(request).filter(status="qualified").count(),"proposals":_owned_leads(request).filter(status="proposal").count(),"replies":_owned_leads(request).filter(status="replied").count(),"high_match":LeadAnalysis.objects.filter(lead__owner=request.user,match_score__gte=80).count(),"followups_pending":FollowUp.objects.filter(lead__owner=request.user,status="draft").count(),"followups_upcoming":FollowUp.objects.filter(lead__owner=request.user,status="approved",scheduled_at__gt=now).count(),"followups_due":FollowUp.objects.filter(lead__owner=request.user,status="due").count(),"last_discovery_at":last.created_at if last else None,"last_discovery":last.metadata if last else None})
 
 @api_view(["GET"])
-def activity(request):return _paginate(request,ActivityLog.objects.all(),ActivityLogSerializer)
+def activity(request):return _paginate(request,ActivityLog.objects.filter(models.Q(lead__owner=request.user)|models.Q(lead__isnull=True)).order_by("-created_at"),ActivityLogSerializer)
 
 
 @api_view(["GET"])
