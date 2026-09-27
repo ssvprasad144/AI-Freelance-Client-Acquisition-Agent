@@ -29,10 +29,7 @@ class FailureRecoveryTests(TestCase):
             message="outreach",
             status="sending",
         )
-        FollowUp.objects.filter(pk=followup.pk).update(updated_at=old)
-        Outreach.objects.filter(pk=outreach.pk).update(updated_at=old)
-
-        result = recover_stale_outbound_claims(max_age_minutes=30)
+                result = recover_stale_outbound_claims(max_age_minutes=30)
 
         self.assertEqual(result, {"followups": 1, "outreach": 1})
         followup.refresh_from_db()
