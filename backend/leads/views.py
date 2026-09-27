@@ -65,13 +65,13 @@ def health(request):
             return {"status":"unknown","last_seen":None}
         age=(now-item.created_at).total_seconds()
         return {"status":"healthy" if age<=max(interval*2,120) else "stale","last_seen":item.created_at}
-    discovery_state=state(discovery,settings.DISCOVERY_WORKER_INTERVAL)
-    followup_state=state(followup,settings.FOLLOWUP_WORKER_INTERVAL)
+    discovery_state=state(discovery,settings.DISCOVERY_CRON_INTERVAL_SECONDS)
+    followup_state=state(followup,settings.FOLLOWUP_CRON_INTERVAL_SECONDS)
     stale=discovery_state["status"]=="stale" or followup_state["status"]=="stale"
     from datetime import timedelta
     recent_failures=ActivityLog.objects.filter(event_type__in=["cron.discovery.failed","cron.followup.failed"],created_at__gte=now-timedelta(hours=1)).count()
     recent_recoveries=ActivityLog.objects.filter(event_type__in=["followup.recovered","outreach.recovered"],created_at__gte=now-timedelta(hours=1)).count()
-    payload={"status":"degraded" if stale or recent_failures else "healthy","database":database,"service":"ai-freelance-client-acquisition-agent","discovery":"web_search","workers":{"discovery_cron":discovery_state,"followup_cron":followup_state},"observability":{"recent_failures_1h":recent_failures,"outbound_recoveries_1h":recent_recoveries}}
+    payload={"status":"degraded" if stale or recent_failures else "healthy","database":database,"service":"ai-freelance-client-acquisition-agent","discovery":"web_search","cron_jobs":{"discovery":discovery_state,"followups":followup_state},"observability":{"recent_failures_1h":recent_failures,"outbound_recoveries_1h":recent_recoveries}}
     return JsonResponse(payload,status=503 if stale or recent_failures else 200)
 
 @api_view(["POST"])
