@@ -14,9 +14,9 @@ class ProductionHealthTests(TestCase):
     def test_health_reports_database_and_unknown_cron_state(self):
         response = self.client.get("/api/health/")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["status"], "healthy")
-        self.assertEqual(response.data["database"], "ok")
-        self.assertEqual(response.data["workers"]["discovery_cron"]["status"], "unknown")
+        self.assertEqual(response.json()["status"], "healthy")
+        self.assertEqual(response.json()["database"], "ok")
+        self.assertEqual(response.json()["workers"]["discovery_cron"]["status"], "unknown")
 
     def test_health_fails_when_discovery_cron_is_stale(self):
         old = timezone.now() - timedelta(hours=2)
