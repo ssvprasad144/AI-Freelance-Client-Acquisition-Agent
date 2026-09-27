@@ -1,6 +1,7 @@
 import json
 from urllib.parse import urlparse
 from django.conf import settings
+from decimal import Decimal, InvalidOperation
 from .models import RevenueRecord, AcquisitionEvent, LearningStat, DiscoverySearchStat, ActivityLog, Outreach
 
 def fx_rates():
@@ -34,14 +35,20 @@ def automatic_costs(lead):
     outreach=Outreach.objects.filter(lead=lead,status__in=["sent","submitted"]).count()*float(getattr(settings,"OUTREACH_UNIT_COST",0))
     return {"search_cost":search,"crawler_cost":crawl,"ai_cost":ai,"outreach_cost":outreach}
 
+def _money(value):
+    try:
+        return max(Decimal("0"), Decimal(str(value or 0)))
+    except (InvalidOperation,TypeError,ValueError):
+        raise ValueError("Revenue amounts must be valid non-negative numbers.")
+
 def upsert_revenue(lead,data):
     attr=attribution_for(lead); auto=automatic_costs(lead)
     currency=str(data.get("currency") or getattr(settings,"REVENUE_DEFAULT_CURRENCY","USD")).upper()[:3]
     obj,_=RevenueRecord.objects.update_or_create(lead=lead,defaults={
-        "estimated_value":float(data.get("estimated_value",0) or 0),"quoted_value":float(data.get("quoted_value",0) or 0),"won_value":float(data.get("won_value",0) or 0),
+        "estimated_value":_money(data.get("estimated_value",0)),"quoted_value":_money(data.get("quoted_value",0)),"won_value":_money(data.get("won_value",0)),
         "currency":currency,"probability":max(0,min(100,float(data.get("probability",100 if lead.status=="won" else 25) or 0))),
-        "search_cost":float(data.get("search_cost",auto["search_cost"]) or 0),"ai_cost":float(data.get("ai_cost",auto["ai_cost"]) or 0),
-        "crawler_cost":float(data.get("crawler_cost",auto["crawler_cost"]) or 0),"outreach_cost":float(data.get("outreach_cost",auto["outreach_cost"]) or 0),**attr})
+        "search_cost":_money(data.get("search_cost",auto["search_cost"])),"ai_cost":_money(data.get("ai_cost",auto["ai_cost"])),
+        "crawler_cost":_money(data.get("crawler_cost",auto["crawler_cost"])),"outreach_cost":_money(data.get("outreach_cost",auto["outreach_cost"])),**attr})
     obj.expected_value=expected_value(obj); obj.save(update_fields=["expected_value","updated_at"]); return obj
 
 def revenue_metrics(owner=None):
