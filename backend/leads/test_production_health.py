@@ -24,5 +24,5 @@ class ProductionHealthTests(TestCase):
         ActivityLog.objects.filter(pk=item.pk).update(created_at=old)
         response = self.client.get("/api/health/")
         self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.data["status"], "degraded")
-        self.assertEqual(response.data["workers"]["discovery_cron"]["status"], "stale")
+        self.assertEqual(response.json()["status"], "degraded")
+        self.assertEqual(response.json()["workers"]["discovery_cron"]["status"], "stale")
