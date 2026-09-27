@@ -172,4 +172,14 @@ def generate_proposal(lead, analysis) -> str:
             "cached_input_tokens": cached_tokens,
         },
     )
-    return _validated_proposal(response.output_text)
+    try:
+        return _validated_proposal(response.output_text)
+    except ValueError as exc:
+        ActivityLog.objects.create(
+            lead=lead,
+            event_type="ai.validation_error",
+            message="AI proposal response failed validation; deterministic proposal fallback used.",
+            metadata={"error":str(exc)[:500],"model":settings.OPENAI_MODEL},
+        )
+        parts=personalize_proposal(lead,analysis)
+        return "\n\n".join([parts["opening"],parts["fit"],parts["evidence"],parts["approach"],parts["next_step"],parts["closing"]])
