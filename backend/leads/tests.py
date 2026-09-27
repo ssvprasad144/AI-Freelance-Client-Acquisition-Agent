@@ -90,8 +90,8 @@ class DataIntegrityAuditTests(TestCase):
         other=get_user_model().objects.create_user(username="integrity-other",password="pass12345")
         lead_a=Lead.objects.create(owner=owner,title="Owner opportunity",description="A",source_url="https://example.com/a",status="won",source="owner")
         lead_b=Lead.objects.create(owner=other,title="Other opportunity",description="B",source_url="https://example.com/b",status="won",source="other")
-        RevenueRecord.objects.create(lead=lead_a,won_value=100)
-        RevenueRecord.objects.create(lead=lead_b,won_value=900)
+        RevenueRecord.objects.create(lead=lead_a,won_value=100,source="owner")
+        RevenueRecord.objects.create(lead=lead_b,won_value=900,source="other")
         LearningStat.objects.create(owner=owner,dimension="source",key="owner",attempts=2)
         LearningStat.objects.create(owner=other,dimension="source",key="other",attempts=2)
         refresh_revenue_learning(owner=owner)
@@ -113,7 +113,12 @@ class DataIntegrityAuditTests(TestCase):
         report=validate_workspace(owner)
         codes={row["code"] for row in report["violations"]}
         self.assertIn("client_has_cross_owner_lead",codes)
-        self.assertIn("contact_lead_client_mismatch",codes)
+
+        other_client=Client.objects.create(owner=other,company="Other Co",normalized_company="other co")
+        wrong_contact=Contact.objects.create(client=other_client,name="Wrong Contact")
+        Lead.objects.create(owner=owner,title="Wrong contact",description="Y",source_url="https://example.com/y",client=client,contact=wrong_contact)
+        refreshed_codes={row["code"] for row in validate_workspace(owner)["violations"]}
+        self.assertIn("contact_client_mismatch",refreshed_codes)
 
     def test_pipeline_detects_contact_without_client(self):
         from .models import Contact, Client
