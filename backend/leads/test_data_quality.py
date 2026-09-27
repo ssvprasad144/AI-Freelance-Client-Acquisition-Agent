@@ -135,7 +135,9 @@ class LeadDataQualityTests(TestCase):
 
 class LegacyIdentitySaveTests(TestCase):
     def test_legacy_duplicate_lead_key_stays_blank_on_unrelated_edit(self):
-        lead = Lead.objects.create(**lead_row())
+        row = lead_row()
+        row.pop("evidence", None)
+        lead = Lead.objects.create(**row)
         Lead.objects.filter(pk=lead.pk).update(normalized_url="")
         lead.refresh_from_db()
         lead.description = "Updated description."
