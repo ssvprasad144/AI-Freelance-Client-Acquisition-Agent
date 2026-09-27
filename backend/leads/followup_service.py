@@ -9,13 +9,13 @@ from .followup_intelligence import cancel_if_stopped
 
 def recover_stale_outbound_claims(max_age_minutes=30):
     cutoff = timezone.now() - timedelta(minutes=max_age_minutes)
-    stale_followups=FollowUp.objects.filter(status="sending", updated_at__lt=cutoff)
-    stale_outreach=Outreach.objects.filter(status="sending", updated_at__lt=cutoff)
-    recovered_followups=stale_followups.update(status="due")
-    recovered_outreach=stale_outreach.update(status="approved")
-    for item in stale_followups.select_related("lead")[:100]:
+    stale_followup_ids=list(FollowUp.objects.filter(status="sending", updated_at__lt=cutoff).values_list("id", flat=True))
+    stale_outreach_ids=list(Outreach.objects.filter(status="sending", updated_at__lt=cutoff).values_list("id", flat=True))
+    recovered_followups=FollowUp.objects.filter(pk__in=stale_followup_ids, status="sending").update(status="due")
+    recovered_outreach=Outreach.objects.filter(pk__in=stale_outreach_ids, status="sending").update(status="approved")
+    for item in FollowUp.objects.filter(pk__in=stale_followup_ids).select_related("lead")[:100]:
         ActivityLog.objects.create(lead=item.lead,event_type="followup.recovered",message="Stale follow-up sending claim recovered after timeout.",metadata={"followup_id":item.id,"max_age_minutes":max_age_minutes})
-    for item in stale_outreach.select_related("lead")[:100]:
+    for item in Outreach.objects.filter(pk__in=stale_outreach_ids).select_related("lead")[:100]:
         ActivityLog.objects.create(lead=item.lead,event_type="outreach.recovered",message="Stale outreach sending claim recovered after timeout.",metadata={"outreach_id":item.id,"max_age_minutes":max_age_minutes})
     return {"followups": recovered_followups, "outreach": recovered_outreach}
 

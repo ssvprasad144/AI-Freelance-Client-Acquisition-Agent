@@ -68,8 +68,11 @@ def health(request):
     discovery_state=state(discovery,settings.DISCOVERY_WORKER_INTERVAL)
     followup_state=state(followup,settings.FOLLOWUP_WORKER_INTERVAL)
     stale=discovery_state["status"]=="stale" or followup_state["status"]=="stale"
-    payload={"status":"degraded" if stale else "healthy","database":database,"service":"ai-freelance-client-acquisition-agent","discovery":"web_search","workers":{"discovery_cron":discovery_state,"followup_cron":followup_state}}
-    return JsonResponse(payload,status=503 if stale else 200)
+    from datetime import timedelta
+    recent_failures=ActivityLog.objects.filter(event_type__in=["cron.discovery.failed","cron.followup.failed"],created_at__gte=now-timedelta(hours=1)).count()
+    recent_recoveries=ActivityLog.objects.filter(event_type__in=["followup.recovered","outreach.recovered"],created_at__gte=now-timedelta(hours=1)).count()
+    payload={"status":"degraded" if stale or recent_failures else "healthy","database":database,"service":"ai-freelance-client-acquisition-agent","discovery":"web_search","workers":{"discovery_cron":discovery_state,"followup_cron":followup_state},"observability":{"recent_failures_1h":recent_failures,"outbound_recoveries_1h":recent_recoveries}}
+    return JsonResponse(payload,status=503 if stale or recent_failures else 200)
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
