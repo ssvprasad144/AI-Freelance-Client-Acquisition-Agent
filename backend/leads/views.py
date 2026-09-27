@@ -502,7 +502,7 @@ def acquisition_events(request):
 @api_view(["GET"])
 def learning(request):
     refresh_learning(owner=request.user)
-    return Response({"stats":LearningStatSerializer(LearningStat.objects.all()[:100],many=True).data})
+    return Response({"stats":LearningStatSerializer(LearningStat.objects.filter(owner=request.user)[:100],many=True).data})
 
 @api_view(["POST"])
 def refresh_learning_view(request):
