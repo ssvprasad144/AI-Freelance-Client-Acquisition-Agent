@@ -212,3 +212,42 @@ class DiscoveryIntegrityTests(TestCase):
                 source_url="https://example.com/shared/1",
             )
         self.assertEqual(Lead.objects.filter(normalized_url="example.com/shared/1").count(),2)
+
+
+class SourceBoundEvidenceIntegrityTests(TestCase):
+    def test_evidence_requires_excerpt_from_the_claimed_source_url(self):
+        from .data_quality import source_supported_evidence
+        findings=[
+            {"url":"https://source-a.example/job/1","excerpt":"Senior Django developer needed for Example A."},
+            {"url":"https://source-b.example/job/2","excerpt":"Senior Django developer needed for Example B."},
+        ]
+        self.assertTrue(source_supported_evidence("Senior Django developer", "https://source-a.example/job/1", findings))
+        self.assertFalse(source_supported_evidence("Senior Django developer needed for Example B.", "https://source-a.example/job/1", findings))
+
+    def test_created_lead_persists_url_bound_evidence(self):
+        from .discovery_cycle import _store
+        from .models import LeadEvidence
+        owner=get_user_model().objects.create_user(username="evidence-owner",password="pass12345")
+        item={
+            "title":"Django developer",
+            "company":"Example",
+            "description":"Senior Django developer needed for Example.",
+            "source":"web_search",
+            "source_url":"https://example.com/jobs/1",
+            "action_url":"https://example.com/jobs/1/apply",
+            "lead_type":"freelance",
+            "budget_text":"",
+            "technologies":["Django"],
+            "contact_info":{},
+        }
+        created,duplicates,invalid=_store(
+            [item],
+            owner=owner,
+            source_findings=[
+                {"url":"https://example.com/jobs/1","excerpt":"Django developer Senior Django developer needed for Example."},
+            ],
+        )
+        self.assertEqual((created,duplicates,invalid),(1,0,0))
+        evidence=LeadEvidence.objects.filter(lead__owner=owner)
+        self.assertTrue(evidence.filter(field_name="description",source_supported=True,validation_status="validated").exists())
+        self.assertFalse(evidence.filter(field_name="action_url",source_supported=True).exists())
