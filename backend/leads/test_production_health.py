@@ -20,7 +20,8 @@ class ProductionHealthTests(TestCase):
 
     def test_health_fails_when_discovery_cron_is_stale(self):
         old = timezone.now() - timedelta(hours=2)
-        ActivityLog.objects.create(event_type="cron.discovery.completed", message="old", created_at=old)
+        item=ActivityLog.objects.create(event_type="cron.discovery.completed", message="old")
+        ActivityLog.objects.filter(pk=item.pk).update(created_at=old)
         response = self.client.get("/api/health/")
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.data["status"], "degraded")
