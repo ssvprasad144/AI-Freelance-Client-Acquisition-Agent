@@ -38,18 +38,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name="followup",
             name="status",
-            field=models.CharField(
-                choices=[
-                    ("draft", "Draft"),
-                    ("approved", "Approved"),
-                    ("due", "Due"),
-                    ("sending", "Sending"),
-                    ("sent", "Sent"),
-                    ("cancelled", "Cancelled"),
-                ],
-                default="draft",
-                max_length=20,
-            ),
+            field=models.CharField(default="draft", max_length=20),
         ),
         migrations.AlterField(
             model_name="followupsequence",
