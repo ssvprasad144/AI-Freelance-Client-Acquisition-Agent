@@ -13,7 +13,7 @@ def backfill_learning_owners(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("leads", "0023_outreach_updated_at"),
+        ("leads", "0020_tenant_ownership"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
