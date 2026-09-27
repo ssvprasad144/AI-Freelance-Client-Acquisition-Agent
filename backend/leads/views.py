@@ -281,8 +281,8 @@ def proposals(request):
 
 @api_view(["POST"])
 def create_followup_sequence(request, pk):
-    try: lead=Lead.objects.get(pk=pk)
-    except Lead.DoesNotExist: return Response({"detail":"Lead not found."},status=404)
+    lead=_owned_lead(request, pk)
+    if not lead: return Response({"detail":"Lead not found."},status=404)
     try: max_steps=max(1,min(int(request.data.get("max_steps",3)),5))
     except (TypeError,ValueError): max_steps=3
     delays=request.data.get("delays_days") or [3,5,7]
@@ -425,8 +425,8 @@ def sync_clients(request):
 
 @api_view(["GET"])
 def client_detail(request,pk):
-    try: client=Client.objects.prefetch_related("contacts","conversations__messages","intelligence").get(pk=pk)
-    except Client.DoesNotExist: return Response({"detail":"Client not found."},status=404)
+    client=_owned_clients(request).prefetch_related("contacts","conversations__messages","intelligence").filter(pk=pk).first()
+    if not client: return Response({"detail":"Client not found."},status=404)
     return Response(ClientSerializer(client).data)
 
 @api_view(["POST"])
@@ -445,12 +445,12 @@ def meetings(request):
 def create_meeting(request):
     lead=None
     if request.data.get("lead_id"):
-        try: lead=_owned_lead(request, request.data["lead_id"])
-        except Lead.DoesNotExist: return Response({"detail":"Lead not found."},status=404)
+        lead=_owned_lead(request, request.data["lead_id"])
+        if not lead: return Response({"detail":"Lead not found."},status=404)
     client=None
     if request.data.get("client_id"):
-        try: client=Client.objects.get(pk=request.data["client_id"])
-        except Client.DoesNotExist: return Response({"detail":"Client not found."},status=404)
+        client=_owned_clients(request).filter(pk=request.data["client_id"]).first()
+        if not client: return Response({"detail":"Client not found."},status=404)
     if lead and not client: client,_=sync_lead_client(lead)
     status_value=str(request.data.get("status") or "requested")
     if status_value not in {x[0] for x in Meeting.STATUS}: return Response({"detail":"Invalid meeting status."},status=400)
@@ -519,8 +519,8 @@ def outreach_strategy(request):
 
 @api_view(["POST"])
 def outreach_plan(request):
-    try: lead=_owned_lead(request, request.data.get("lead_id"))
-    except Lead.DoesNotExist:return Response({"detail":"Lead not found."},status=404)
+    lead=_owned_lead(request, request.data.get("lead_id"))
+    if not lead:return Response({"detail":"Lead not found."},status=404)
     try: plan=create_plan(lead,str(request.data.get("channel") or "") or None,str(request.data.get("variant") or "A"))
     except ValueError as exc:return Response({"detail":str(exc)},status=400)
     return Response(OutreachPlanSerializer(plan).data,status=201)
@@ -541,7 +541,7 @@ def revenue_records(request): return _paginate(request,RevenueRecord.objects.fil
 
 @api_view(["POST"])
 def revenue_record(request):
-    try: lead=Lead.objects.get(pk=request.data.get("lead_id"))
-    except Lead.DoesNotExist:return Response({"detail":"Lead not found."},status=404)
+    lead=_owned_lead(request, request.data.get("lead_id"))
+    if not lead:return Response({"detail":"Lead not found."},status=404)
     record=upsert_revenue(lead,request.data)
     return Response(RevenueRecordSerializer(record).data,status=201)
