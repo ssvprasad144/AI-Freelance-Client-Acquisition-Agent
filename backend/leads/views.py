@@ -317,7 +317,7 @@ def discovery_profiles(request):
 
 @api_view(["GET"])
 def analytics(request):
-    return Response(acquisition_metrics())
+    return Response(acquisition_metrics(owner=request.user))
 
 @api_view(["POST"])
 def send_followup(request,pk):
