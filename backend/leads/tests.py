@@ -222,3 +222,46 @@ class SingleUserEndToEndSafetyTests(TestCase):
             result=run_discovery_cycle(query="test query",source="mock",qualification_limit=1)
         self.assertEqual(result["created"],0)
         discover.assert_called_once()
+
+
+class Phase16To18LifecycleVerificationTests(TestCase):
+    def setUp(self):
+        self.user=get_user_model().objects.create_user(username="lifecycle-owner",password="pass12345")
+        self.lead=Lead.objects.create(owner=self.user,title="Django Automation Engineer",description="Build a Django automation workflow for a client.",source_url="https://example.com/jobs/lifecycle")
+
+    def test_stale_outbound_recovery_records_audit_events(self):
+        from .followup_service import recover_stale_outbound_claims
+        old=timezone.now()-timedelta(minutes=45)
+        followup=FollowUp.objects.create(lead=self.lead,scheduled_at=old,message="Follow up",status="sending")
+        outreach=Outreach.objects.create(lead=self.lead,medium="email",message="Hello",status="sending")
+        FollowUp.objects.filter(pk=followup.pk).update(updated_at=old)
+        Outreach.objects.filter(pk=outreach.pk).update(updated_at=old)
+        result=recover_stale_outbound_claims(30)
+        self.assertEqual(result["followups"],1)
+        self.assertEqual(result["outreach"],1)
+        self.assertEqual(FollowUp.objects.get(pk=followup.pk).status,"due")
+        self.assertEqual(Outreach.objects.get(pk=outreach.pk).status,"approved")
+        self.assertTrue(ActivityLog.objects.filter(event_type="followup.recovered",metadata__followup_id=followup.id).exists())
+        self.assertTrue(ActivityLog.objects.filter(event_type="outreach.recovered",metadata__outreach_id=outreach.id).exists())
+
+    def test_lifecycle_verifier_accepts_owned_new_lead_with_opportunity(self):
+        from .lifecycle_service import validate_workspace
+        from .acquisition_orchestrator import ensure_opportunity
+        ensure_opportunity(self.lead)
+        report=validate_workspace(self.user)
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["violations"],[])
+
+    def test_lifecycle_verifier_detects_ownerless_lead(self):
+        from .lifecycle_service import validate_workspace
+        Lead.objects.create(title="Ownerless",description="Should be assigned before production.",source_url="https://example.com/ownerless")
+        report=validate_workspace(self.user)
+        self.assertFalse(report["ok"])
+        self.assertGreater(report["ownerless_records"]["leads"],0)
+
+    def test_health_exposes_recent_failure_telemetry(self):
+        from django.test import Client
+        ActivityLog.objects.create(event_type="cron.discovery.failed",message="failure",metadata={})
+        response=Client().get("/api/health/")
+        self.assertEqual(response.status_code,503)
+        self.assertEqual(response.json()["observability"]["recent_failures_1h"],1)
