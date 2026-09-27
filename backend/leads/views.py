@@ -79,6 +79,17 @@ def me(request): return Response({"id":request.user.id,"username":request.user.u
 
 
 
+
+
+def _owned_leads(request):
+    return Lead.objects.filter(owner=request.user)
+
+def _owned_clients(request):
+    return Client.objects.filter(owner=request.user)
+
+def _owned_lead(request, pk):
+    return _owned_leads(request).filter(pk=pk).first()
+
 def _proposal_delivery(lead):
     destination = resolve_outreach_destination(lead)
     return {"medium": destination.medium, "action_type": destination.action_type, "action_url": destination.url}
@@ -98,7 +109,7 @@ def _store(items):
 def qualify_new_leads(request):
     limit=min(max(int(request.data.get("limit",20)),1),50)
     now=timezone.now()
-    leads=list(Lead.objects.filter(status="new",analysis__isnull=True).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).order_by("-discovered_at","-created_at")[:limit]); qualified=0; locally_filtered=0
+    leads=list(_owned_leads(request).filter(status="new",analysis__isnull=True).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).order_by("-discovered_at","-created_at")[:limit]); qualified=0; locally_filtered=0
     for lead in leads:
         local=local_lead_score(lead)
         if not should_ai_qualify(lead):
@@ -109,16 +120,16 @@ def qualify_new_leads(request):
         if analysis.relevant and analysis.match_score>=settings.QUALIFICATION_MIN_SCORE:
             lead.status="qualified"; lead.save(update_fields=["status","updated_at"]); qualified+=1
             ActivityLog.objects.create(lead=lead,event_type="lead.auto_qualified",message=f"Lead auto-qualified with score {analysis.match_score}.",metadata={"model":analysis.model,"match_score":analysis.match_score,"threshold":settings.QUALIFICATION_MIN_SCORE})
-    return Response({"status":"success","analyzed":len(leads),"qualified":qualified,"locally_filtered":locally_filtered,"ai_calls":len(leads)-locally_filtered,"threshold":settings.QUALIFICATION_MIN_SCORE,"remaining_new":Lead.objects.filter(status="new").count()})
+    return Response({"status":"success","analyzed":len(leads),"qualified":qualified,"locally_filtered":locally_filtered,"ai_calls":len(leads)-locally_filtered,"threshold":settings.QUALIFICATION_MIN_SCORE,"remaining_new":_owned_leads(request).filter(status="new").count()})
 
 @api_view(["GET"])
-def followups(request): return _paginate(request,FollowUp.objects.filter(status__in=["draft","approved"]).select_related("lead").order_by("scheduled_at"),FollowUpSerializer)
+def followups(request): return _paginate(request,FollowUp.objects.filter(lead__owner=request.user,status__in=["draft","approved"]).select_related("lead").order_by("scheduled_at"),FollowUpSerializer)
 
 @api_view(["POST"])
 def create_followup(request,pk=None):
     lead_id=pk or request.data.get("lead_id")
     if not lead_id:return Response({"detail":"lead_id is required."},status=400)
-    try:lead=Lead.objects.get(pk=lead_id)
+    try:lead=_owned_lead(request, lead_id)
     except Lead.DoesNotExist:return Response({"detail":"Lead not found."},status=404)
     scheduled=request.data.get("scheduled_at"); message=str(request.data.get("message") or "").strip()
     if not scheduled or not message:return Response({"detail":"scheduled_at and message are required."},status=400)
@@ -129,10 +140,10 @@ def create_followup(request,pk=None):
 @api_view(["POST"])
 def process_due_followups(request): return Response(process_due_followups_service())
 @api_view(["GET"])
-def due_followups(request): return _paginate(request,FollowUp.objects.filter(status="due").select_related("lead").order_by("scheduled_at"),FollowUpSerializer)
+def due_followups(request): return _paginate(request,FollowUp.objects.filter(lead__owner=request.user,status="due").select_related("lead").order_by("scheduled_at"),FollowUpSerializer)
 @api_view(["GET"])
 def qualified_leads(request):
-    now=timezone.now(); qs=Lead.objects.filter(status__in=["qualified","proposal"]).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).order_by("-updated_at")
+    now=timezone.now(); qs=_owned_leads(request).filter(status__in=["qualified","proposal"]).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).order_by("-updated_at")
     return _paginate(request,qs,LeadSerializer)
 
 @api_view(["POST"])
@@ -157,11 +168,11 @@ def run_discovery(request):
     return Response({"status":"success",**payload})
 
 @api_view(["GET"])
-def replies(request): return _paginate(request,Reply.objects.select_related("lead").order_by("-created_at"),ReplySerializer)
+def replies(request): return _paginate(request,Reply.objects.filter(lead__owner=request.user).select_related("lead").order_by("-created_at"),ReplySerializer)
 
 @api_view(["POST"])
 def create_reply(request,pk):
-    try:lead=Lead.objects.get(pk=pk)
+    try:lead=_owned_lead(request, pk)
     except Lead.DoesNotExist:return Response({"detail":"Lead not found."},status=404)
     message=str(request.data.get("message") or "").strip()
     if not message:return Response({"detail":"message is required."},status=400)
@@ -228,14 +239,14 @@ class LeadViewSet(viewsets.ModelViewSet):
 
 @api_view(["GET"])
 def proposal_workspace(request, pk):
-    try: proposal=Proposal.objects.prefetch_related("versions").get(pk=pk)
+    try: proposal=Proposal.objects.filter(lead__owner=request.user).prefetch_related("versions").filter(pk=pk).first()
     except Proposal.DoesNotExist: return Response({"detail":"Proposal not found."},status=404)
     version=current_version(proposal)
     return Response({**ProposalSerializer(proposal).data,"current_content":version.content if version else ""})
 
 @api_view(["PUT"])
 def edit_proposal(request, pk):
-    try: proposal=Proposal.objects.get(pk=pk)
+    try: proposal=Proposal.objects.filter(lead__owner=request.user,pk=pk).first()
     except Proposal.DoesNotExist: return Response({"detail":"Proposal not found."},status=404)
     content=str(request.data.get("content") or "").strip()
     if not content: return Response({"detail":"content is required."},status=400)
@@ -264,7 +275,7 @@ def restore_proposal_version(request, pk):
 
 @api_view(["GET"])
 def proposals(request):
-    return _paginate(request,Proposal.objects.select_related("lead").prefetch_related("versions").order_by("-updated_at"),ProposalSerializer)
+    return _paginate(request,Proposal.objects.filter(lead__owner=request.user).select_related("lead").prefetch_related("versions").order_by("-updated_at"),ProposalSerializer)
 
 @api_view(["POST"])
 def create_followup_sequence(request, pk):
@@ -283,11 +294,11 @@ def create_followup_sequence(request, pk):
 
 @api_view(["GET"])
 def followup_sequences(request):
-    return _paginate(request,FollowUpSequence.objects.select_related("lead").prefetch_related("followups").order_by("-created_at"),FollowUpSequenceSerializer)
+    return _paginate(request,FollowUpSequence.objects.filter(lead__owner=request.user).select_related("lead").prefetch_related("followups").order_by("-created_at"),FollowUpSequenceSerializer)
 
 @api_view(["POST"])
 def cancel_followup_sequence(request, pk):
-    try: sequence=FollowUpSequence.objects.get(pk=pk)
+    try: sequence=FollowUpSequence.objects.filter(lead__owner=request.user,pk=pk).first()
     except FollowUpSequence.DoesNotExist: return Response({"detail":"Sequence not found."},status=404)
     sequence.status="cancelled"; sequence.save(update_fields=["status","updated_at"])
     FollowUp.objects.filter(sequence=sequence,status__in=["draft","approved","due"]).update(status="cancelled")
@@ -303,7 +314,7 @@ def analytics(request):
 
 @api_view(["POST"])
 def send_followup(request,pk):
-    try: followup=FollowUp.objects.select_related("lead").get(pk=pk)
+    try: followup=FollowUp.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
     except FollowUp.DoesNotExist: return Response({"detail":"Follow-up not found."},status=404)
     claimed=FollowUp.objects.filter(pk=pk,status="due").update(status="sending")
     if not claimed:
@@ -322,7 +333,7 @@ def send_followup(request,pk):
 
 @api_view(["POST"])
 def send_outreach(request,pk):
-    try: outreach=Outreach.objects.select_related("lead").get(pk=pk)
+    try: outreach=Outreach.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
     except Outreach.DoesNotExist: return Response({"detail":"Outreach not found."},status=404)
     claimed=Outreach.objects.filter(pk=pk,status="approved").update(status="sending")
     if not claimed:
@@ -330,7 +341,7 @@ def send_outreach(request,pk):
     outreach.refresh_from_db()
     try:
         result=send_email(outreach)
-        plan=OutreachPlan.objects.filter(lead=outreach.lead,channel=outreach.medium,message=outreach.message,status="approved").order_by("-updated_at").first()
+        plan=OutreachPlan.objects.filter(lead__owner=request.user,(lead=outreach.lead,channel=outreach.medium,message=outreach.message,status="approved").order_by("-updated_at").first()
         if plan:
             from .outreach_intelligence import record_attempt_for_outreach
             record_attempt_for_outreach(plan)
@@ -351,7 +362,7 @@ def send_outreach(request,pk):
 @api_view(["GET"])
 def outreach_ready(request):
     rows=[]
-    qs=Outreach.objects.select_related("lead","proposal").filter(status__in=["draft","approved","opened"]).order_by("-created_at")
+    qs=Outreach.objects.filter(lead__owner=request.user).select_related("lead","proposal").filter(status__in=["draft","approved","opened"]).order_by("-created_at")
     for item in qs:
         rows.append({
             "id":item.id,"lead_id":item.lead_id,"lead_title":item.lead.title,
@@ -362,7 +373,7 @@ def outreach_ready(request):
 
 @api_view(["POST"])
 def open_outreach(request,pk):
-    try: item=Outreach.objects.get(pk=pk)
+    try: item=Outreach.objects.filter(lead__owner=request.user,pk=pk).first()
     except Outreach.DoesNotExist: return Response({"detail":"Outreach not found."},status=404)
     if item.status=="draft": item.status="opened"
     item.opened_at=item.opened_at or timezone.now()
@@ -391,8 +402,8 @@ def mark_outreach_submitted(request,pk):
 
 @api_view(["GET"])
 def dashboard(request):
-    now=timezone.now(); active=Lead.objects.exclude(status="archived").filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)); last=ActivityLog.objects.filter(event_type="discovery.completed").order_by("-created_at").first()
-    return JsonResponse({"opportunities":active.count(),"qualified":Lead.objects.filter(status="qualified").count(),"proposals":Lead.objects.filter(status="proposal").count(),"replies":Lead.objects.filter(status="replied").count(),"high_match":LeadAnalysis.objects.filter(match_score__gte=80).count(),"followups_pending":FollowUp.objects.filter(status="draft").count(),"followups_upcoming":FollowUp.objects.filter(status="approved",scheduled_at__gt=now).count(),"followups_due":FollowUp.objects.filter(status="due").count(),"last_discovery_at":last.created_at if last else None,"last_discovery":last.metadata if last else None})
+    now=timezone.now(); active=_owned_leads(request).exclude(status="archived").filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)); last=ActivityLog.objects.filter(event_type="discovery.completed").order_by("-created_at").first()
+    return JsonResponse({"opportunities":active.count(),"qualified":_owned_leads(request).filter(status="qualified").count(),"proposals":_owned_leads(request).filter(status="proposal").count(),"replies":_owned_leads(request).filter(status="replied").count(),"high_match":LeadAnalysis.objects.filter(lead__owner=request.user,match_score__gte=80).count(),"followups_pending":FollowUp.objects.filter(status="draft").count(),"followups_upcoming":FollowUp.objects.filter(status="approved",scheduled_at__gt=now).count(),"followups_due":FollowUp.objects.filter(status="due").count(),"last_discovery_at":last.created_at if last else None,"last_discovery":last.metadata if last else None})
 
 @api_view(["GET"])
 def activity(request):return _paginate(request,ActivityLog.objects.all(),ActivityLogSerializer)
@@ -400,15 +411,15 @@ def activity(request):return _paginate(request,ActivityLog.objects.all(),Activit
 
 @api_view(["GET"])
 def clients(request):
-    return _paginate(request,Client.objects.prefetch_related("contacts","conversations","intelligence").order_by("-updated_at"),ClientSerializer)
+    return _paginate(request,_owned_clients(request).prefetch_related("contacts","conversations","intelligence").order_by("-updated_at"),ClientSerializer)
 
 @api_view(["POST"])
 def sync_clients(request):
     count=0
-    for lead in Lead.objects.all().iterator():
+    for lead in _owned_leads(request).iterator():
         if lead.company:
             sync_lead_client(lead); count+=1
-    return Response({"synced":count,"clients":Client.objects.count()})
+    return Response({"synced":count,"clients":_owned_clients(request).count()})
 
 @api_view(["GET"])
 def client_detail(request,pk):
@@ -419,20 +430,20 @@ def client_detail(request,pk):
 @api_view(["POST"])
 @throttle_classes([AIThrottle])
 def client_intelligence(request,pk):
-    try: client=Client.objects.get(pk=pk)
+    try: client=_owned_clients(request).filter(pk=pk).first()
     except Client.DoesNotExist: return Response({"detail":"Client not found."},status=404)
     intelligence=generate_client_intelligence(client)
     return Response({"client":ClientSerializer(client).data,"intelligence":ClientIntelligenceSerializer(intelligence).data})
 
 @api_view(["GET"])
 def meetings(request):
-    return _paginate(request,Meeting.objects.select_related("client","lead","contact").order_by("-scheduled_at","-created_at"),MeetingSerializer)
+    return _paginate(request,Meeting.objects.filter(models.Q(lead__owner=request.user)|models.Q(client__owner=request.user)).select_related("client","lead","contact").order_by("-scheduled_at","-created_at"),MeetingSerializer)
 
 @api_view(["POST"])
 def create_meeting(request):
     lead=None
     if request.data.get("lead_id"):
-        try: lead=Lead.objects.get(pk=request.data["lead_id"])
+        try: lead=_owned_lead(request, request.data["lead_id"])
         except Lead.DoesNotExist: return Response({"detail":"Lead not found."},status=404)
     client=None
     if request.data.get("client_id"):
@@ -443,7 +454,7 @@ def create_meeting(request):
     if status_value not in {x[0] for x in Meeting.STATUS}: return Response({"detail":"Invalid meeting status."},status=400)
     contact_id=request.data.get("contact_id")
     if contact_id:
-        try: contact=Contact.objects.get(pk=contact_id)
+        try: contact=Contact.objects.filter(client__owner=request.user,pk=contact_id).first()
         except Contact.DoesNotExist: return Response({"detail":"Contact not found."},status=404)
         if client and contact.client_id!=client.id: return Response({"detail":"Contact does not belong to this client."},status=400)
     meeting=Meeting.objects.create(lead=lead,client=client,contact_id=contact_id,status="requested",scheduled_at=request.data.get("scheduled_at"),meeting_url=str(request.data.get("meeting_url") or ""),notes=str(request.data.get("notes") or ""),outcome=str(request.data.get("outcome") or ""),next_action=str(request.data.get("next_action") or ""))
@@ -452,7 +463,7 @@ def create_meeting(request):
 
 @api_view(["PATCH","PUT"])
 def update_meeting(request,pk):
-    try: meeting=Meeting.objects.get(pk=pk)
+    try: meeting=Meeting.objects.filter(models.Q(lead__owner=request.user)|models.Q(client__owner=request.user),pk=pk).first()
     except Meeting.DoesNotExist: return Response({"detail":"Meeting not found."},status=404)
     allowed=["status","scheduled_at","meeting_url","notes","outcome","next_action","completed_at"]
     if "status" in request.data and str(request.data["status"]) not in {x[0] for x in Meeting.STATUS}: return Response({"detail":"Invalid meeting status."},status=400)
@@ -465,7 +476,7 @@ def update_meeting(request,pk):
 
 @api_view(["GET"])
 def acquisition_events(request):
-    return _paginate(request,AcquisitionEvent.objects.select_related("lead").order_by("-occurred_at"),AcquisitionEventSerializer)
+    return _paginate(request,AcquisitionEvent.objects.filter(lead__owner=request.user).select_related("lead").order_by("-occurred_at"),AcquisitionEventSerializer)
 
 @api_view(["GET"])
 def learning(request):
@@ -490,7 +501,7 @@ def acquisition_next_actions(request):
 
 @api_view(["POST"])
 def acquisition_action(request,pk):
-    try: obj=AcquisitionOpportunity.objects.select_related("lead").get(pk=pk)
+    try: obj=AcquisitionOpportunity.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
     except AcquisitionOpportunity.DoesNotExist:return Response({"detail":"Opportunity not found."},status=404)
     action=str(request.data.get("action") or obj.recommended_action); mode=str(request.data.get("mode") or "approval_required"); approved=bool(request.data.get("approved",False))
     try:return Response(execute_action(obj,action,mode=mode,approved=approved))
@@ -506,7 +517,7 @@ def outreach_strategy(request):
 
 @api_view(["POST"])
 def outreach_plan(request):
-    try: lead=Lead.objects.get(pk=request.data.get("lead_id"))
+    try: lead=_owned_lead(request, request.data.get("lead_id"))
     except Lead.DoesNotExist:return Response({"detail":"Lead not found."},status=404)
     try: plan=create_plan(lead,str(request.data.get("channel") or "") or None,str(request.data.get("variant") or "A"))
     except ValueError as exc:return Response({"detail":str(exc)},status=400)
@@ -514,7 +525,7 @@ def outreach_plan(request):
 
 @api_view(["POST"])
 def approve_outreach_plan(request,pk):
-    try: plan=OutreachPlan.objects.select_related("lead").get(pk=pk)
+    try: plan=OutreachPlan.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
     except OutreachPlan.DoesNotExist:return Response({"detail":"Outreach plan not found."},status=404)
     try: return Response(OutreachPlanSerializer(mark_approved(plan)).data)
     except ValueError as exc:return Response({"detail":str(exc)},status=400)
@@ -524,7 +535,7 @@ def approve_outreach_plan(request,pk):
 def revenue_dashboard(request): return Response({**revenue_metrics(),"optimization":optimization_report()})
 
 @api_view(["GET"])
-def revenue_records(request): return _paginate(request,RevenueRecord.objects.select_related("lead").all(),RevenueRecordSerializer)
+def revenue_records(request): return _paginate(request,RevenueRecord.objects.filter(lead__owner=request.user).select_related("lead").all(),RevenueRecordSerializer)
 
 @api_view(["POST"])
 def revenue_record(request):
