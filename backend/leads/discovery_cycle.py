@@ -2,6 +2,7 @@ import re
 from urllib.parse import urlsplit
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db import models, transaction
 from django.utils import timezone
 
@@ -99,6 +100,10 @@ def _payload(query,profile_id,**extra):
     payload={"query":query,"profile_id":profile_id,"source":"web_search","model":settings.DISCOVERY_MODEL,"cached":False,"searched":False,"reused":False,"skip_reason":None,"discovered":0,"created":0,"duplicates":0,"invalid":0,"analyzed":0,"qualified":0,"locally_filtered":0,"ai_calls":0,"ai_input_tokens":0,"ai_output_tokens":0,"qualification_threshold":settings.QUALIFICATION_MIN_SCORE}; payload.update(extra); return payload
 
 def run_discovery_cycle(query=None,source="live",qualification_limit=None,profile_id=None,strategy_id=None,owner=None):
+    # Single-user deployment: background discovery belongs to the first user.
+    # Explicit API callers still pass the authenticated user.
+    if owner is None:
+        owner = get_user_model().objects.order_by("id").first()
     cycle_started=timezone.now()
     selected=None
     if not query:
