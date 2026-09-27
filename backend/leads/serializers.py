@@ -74,7 +74,10 @@ class AcquisitionEventSerializer(serializers.ModelSerializer):
     class Meta: model=AcquisitionEvent; fields="__all__"
 
 class LearningStatSerializer(serializers.ModelSerializer):
-    class Meta: model=LearningStat; fields="__all__"
+    class Meta:
+        model=LearningStat
+        fields="__all__"
+        read_only_fields=("owner","updated_at")
 
 
 class AcquisitionOpportunitySerializer(serializers.ModelSerializer):
