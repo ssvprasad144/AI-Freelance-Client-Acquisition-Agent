@@ -111,14 +111,18 @@ def analyze_lead(lead) -> dict[str, Any]:
             "lead_type": lead.lead_type,
         },
     }
-    response = client.responses.create(
-        model=settings.OPENAI_MODEL,
+    try:
+        response = client.responses.create(
+            model=settings.OPENAI_MODEL,
         input=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": json.dumps(payload, separators=(",", ":"))},
         ],
-        max_output_tokens=settings.AI_QUALIFICATION_MAX_OUTPUT_TOKENS,
-    )
+            max_output_tokens=settings.AI_QUALIFICATION_MAX_OUTPUT_TOKENS,
+        )
+    except Exception as exc:
+        ActivityLog.objects.create(lead=lead,event_type="ai.provider_error",message="AI qualification provider failed; deterministic fallback used.",metadata={"error":str(exc)[:500],"model":settings.OPENAI_MODEL})
+        return deterministic_analysis(lead)
     try:
         data = _validated_analysis(json.loads(response.output_text))
     except (json.JSONDecodeError, TypeError, ValueError) as exc:
@@ -129,6 +133,7 @@ def analyze_lead(lead) -> dict[str, Any]:
         "model": settings.OPENAI_MODEL,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
+        "input_fingerprint": analysis_fingerprint(lead),
     })
     return data
 
