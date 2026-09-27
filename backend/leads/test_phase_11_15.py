@@ -20,7 +20,7 @@ class Phase1115Tests(TestCase):
 
     def test_client_memory_deduplicates_company(self):
         client1,contact1=sync_lead_client(self.lead)
-        second=Lead.objects.create(title="Second opportunity",description="Django work",company="ACME LABS",source="reddit",source_url="https://reddit.com/r/test/1",contact_info={"email":"other@example.com"})
+        second=Lead.objects.create(owner=self.user,title="Second opportunity",description="Django work",company="ACME LABS",source="reddit",source_url="https://reddit.com/r/test/1",contact_info={"email":"other@example.com"})
         client2,contact2=sync_lead_client(second)
         self.assertEqual(client1.id,client2.id)
         self.assertEqual(Client.objects.count(),1)
