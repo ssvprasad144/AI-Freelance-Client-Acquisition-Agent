@@ -28,7 +28,7 @@ services:
         value: gpt-4o-mini
       - key: DISCOVERY_MODEL
         value: gpt-4o-mini
-      - key: DISCOVERY_WORKER_INTERVAL
+      - key: DISCOVERY_CRON_INTERVAL_SECONDS
         value: "21600"
       - key: DISCOVERY_QUERY_CACHE_TTL_HOURS
         value: "72"
@@ -80,7 +80,7 @@ services:
         value: "350"
       - key: AI_REPLY_MAX_OUTPUT_TOKENS
         value: "180"
-      - key: FOLLOWUP_WORKER_INTERVAL
+      - key: FOLLOWUP_CRON_INTERVAL_SECONDS
         value: "1800"
       - key: SECURE_SSL_REDIRECT
         value: "true"
