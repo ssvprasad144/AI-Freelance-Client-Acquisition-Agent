@@ -90,8 +90,8 @@ def send_email(outreach):
 
 
 def send_followup(followup):
-    if followup.status!="due":
-        raise ValueError("Only due follow-ups can be sent.")
+    if followup.status not in {"due", "sending"}:
+        raise ValueError("Only due or claimed follow-ups can be sent.")
     if followup.medium != "email":
         raise ValueError(f"Manual follow-up required: open {followup.destination_url or 'the source destination'} and submit the approved draft there.")
     try:

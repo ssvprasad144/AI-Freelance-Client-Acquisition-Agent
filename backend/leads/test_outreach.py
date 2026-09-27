@@ -1,8 +1,9 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 
-from .models import Lead, LeadAnalysis, Outreach
+from .models import FollowUp, Lead, LeadAnalysis, Outreach
 
 
 class SourceAwareOutreachTests(TestCase):
@@ -64,3 +65,16 @@ class SourceAwareOutreachTests(TestCase):
         approved = self.client.post(f"/api/leads/{lead.id}/approve_proposal/")
         self.assertEqual(approved.status_code, 200)
         self.assertEqual(approved.data["status"], "approved")
+
+    def test_followup_send_rejects_already_claimed_followup(self):
+        lead = self.make_lead("direct", contact_info={"email": "client@example.com"})
+        followup = FollowUp.objects.create(
+            lead=lead,
+            scheduled_at=timezone.now(),
+            message="Following up on the opportunity.",
+            status="sending",
+        )
+        response = self.client.post(f"/api/followups/{followup.id}/send/")
+        self.assertEqual(response.status_code, 409)
+        followup.refresh_from_db()
+        self.assertEqual(followup.status, "sending")
