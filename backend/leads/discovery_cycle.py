@@ -44,9 +44,12 @@ def _store(items,profile_id="",strategy_id="",query="",owner=None):
             Lead.objects.create(owner=owner,title=item["title"],normalized_title=nt,normalized_url=nu,company=item.get("company",""),description=item["description"],source=item.get("source") or "web_search",source_url=item["source_url"],action_url=item.get("action_url") or item["source_url"],lead_type=item.get("lead_type","freelance"),budget_text=item.get("budget_text",""),technologies=item.get("technologies") or [],contact_info=item.get("contact_info") or {},discovery_profile=profile_id,discovery_strategy=strategy_id,discovery_query=query,discovered_at=timezone.now(),posted_at=item.get("posted_at") or None,expires_at=item.get("expires_at") or None,last_verified_at=timezone.now()); created+=1
     return created,duplicates,invalid
 
-def _fresh_qualified_inventory():
+def _fresh_qualified_inventory(owner=None):
     now=timezone.now(); cutoff=now-timezone.timedelta(hours=settings.DISCOVERY_FRESHNESS_HOURS)
-    return Lead.objects.filter(status="qualified").filter(models.Q(last_verified_at__gte=cutoff)|models.Q(last_verified_at__isnull=True,updated_at__gte=cutoff)).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).count()
+    qs=Lead.objects.filter(status="qualified").filter(models.Q(last_verified_at__gte=cutoff)|models.Q(last_verified_at__isnull=True,updated_at__gte=cutoff)).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now))
+    if owner is not None:
+        qs=qs.filter(owner=owner)
+    return qs.count()
 
 def _daily_search_count():
     return ActivityLog.objects.filter(event_type="discovery.search",created_at__date=timezone.localdate()).count()
@@ -71,13 +74,16 @@ def _update_domain_stats(items,actual_search):
         stat.save(update_fields=["searches","results","last_seen_at","updated_at"])
     return list(domains)
 
-def _refresh_domain_outcomes(items):
+def _refresh_domain_outcomes(items, owner=None):
     by_domain={}
     for item in items:
         d=_domain(item.get("source_url",""))
         if d: by_domain.setdefault(d,[]).append(_normalize_url(item.get("source_url","")))
     for d,urls in by_domain.items():
-        leads=list(Lead.objects.filter(normalized_url__in=urls))
+        qs=Lead.objects.filter(normalized_url__in=urls)
+        if owner is not None:
+            qs=qs.filter(owner=owner)
+        leads=list(qs)
         qualified=sum(1 for lead in leads if lead.status in {"qualified","proposal","contacted","replied","won"})
         replied=sum(1 for lead in leads if lead.status in {"replied","won"})
         won=sum(1 for lead in leads if lead.status=="won")
@@ -122,7 +128,7 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
         payload=_payload(query,profile_id,source=source,cached=True,reused=bool(reused_cache),skip_reason="semantic result reuse" if reused_cache else "fresh query cache",strategy_id=strategy_id)
         ActivityLog.objects.create(event_type="discovery.cache_hit",message="Discovery results reused without a new web search.",metadata=payload)
     elif source=="live":
-        inventory=_fresh_qualified_inventory()
+        inventory=_fresh_qualified_inventory(owner=owner)
         if _daily_search_count()>=daily_search_limit(inventory):
             payload=_payload(query,profile_id,cached=True,skip_reason="dynamic daily web-search budget exhausted",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.skipped",message="Discovery search skipped: dynamic daily web-search budget exhausted.",metadata=payload); return payload
         if inventory>=settings.DISCOVERY_TARGET_QUALIFIED_LEADS:
@@ -169,7 +175,7 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
     from .acquisition_orchestrator import ensure_opportunity
     for lead in candidates:
         ensure_opportunity(lead)
-    _refresh_domain_outcomes(items)
+    _refresh_domain_outcomes(items, owner=owner)
     actual_search=bool(source=="live" and not (cache_fresh or reused_cache))
     payload=_payload(query,profile_id,source=result.get("source",source) if 'result' in locals() else source,model=result.get("model","unknown") if 'result' in locals() else "cached",cached=not actual_search,searched=actual_search,reused=bool(reused_cache),discovered=len(items),created=created,duplicates=duplicates,invalid=invalid,analyzed=analyzed,qualified=qualified,locally_filtered=locally_filtered,ai_calls=analyzed-locally_filtered,ai_input_tokens=ai_input_tokens,ai_output_tokens=ai_output_tokens,raw_results=raw_results,valid_results=valid_results,unique_results=len(seen),scored_candidates=len(ranked),crawled_candidates=crawled_candidates,strategy_id=strategy_id,query_variant=(selected or {}).get("query_variant","base"),context_size=(selected or {}).get("context_size",settings.DISCOVERY_SEARCH_CONTEXT_SIZE))
     if actual_search:
