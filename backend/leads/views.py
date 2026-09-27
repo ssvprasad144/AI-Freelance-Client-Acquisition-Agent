@@ -99,6 +99,17 @@ def _owned_clients(request):
 def _owned_lead(request, pk):
     return _owned_leads(request).filter(pk=pk).first()
 
+def _parse_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized=value.strip().lower()
+        if normalized in {"true","1","yes","on"}: return True
+        if normalized in {"false","0","no","off"}: return False
+    raise ValueError("Expected a boolean value.")
+
 def _proposal_delivery(lead):
     destination = resolve_outreach_destination(lead)
     return {"medium": destination.medium, "action_type": destination.action_type, "action_url": destination.url}
@@ -116,7 +127,8 @@ def _store(items):
 @api_view(["POST"])
 @throttle_classes([AIThrottle])
 def qualify_new_leads(request):
-    limit=min(max(int(request.data.get("limit",20)),1),50)
+    try: limit=min(max(int(request.data.get("limit",20)),1),50)
+    except (TypeError,ValueError): return Response({"detail":"limit must be an integer."},status=400)
     now=timezone.now()
     leads=list(_owned_leads(request).filter(status="new",analysis__isnull=True).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).order_by("-discovered_at","-created_at")[:limit]); qualified=0; locally_filtered=0
     for lead in leads:
@@ -169,7 +181,8 @@ def approve_followup(request,pk):
 def run_discovery(request):
     query=str(request.data.get("query") or settings.DEFAULT_DISCOVERY_QUERY).strip()
     source=str(request.data.get("source") or "live").lower()
-    limit=min(max(int(request.data.get("limit",settings.DISCOVERY_MAX_RESULTS)),1),settings.DISCOVERY_MAX_RESULTS)
+    try: limit=min(max(int(request.data.get("limit",settings.DISCOVERY_MAX_RESULTS)),1),settings.DISCOVERY_MAX_RESULTS)
+    except (TypeError,ValueError): return Response({"detail":"limit must be an integer."},status=400)
     try:
         payload=run_discovery_cycle(query=query,source=source,qualification_limit=limit,profile_id="manual",owner=request.user)
     except (LiveDiscoveryError,DiscoveryError) as exc:
@@ -428,7 +441,7 @@ def mark_outreach_submitted(request,pk):
 
 @api_view(["GET"])
 def dashboard(request):
-    now=timezone.now(); active=_owned_leads(request).exclude(status="archived").filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)); last=ActivityLog.objects.filter(event_type="discovery.completed").order_by("-created_at").first()
+    now=timezone.now(); active=_owned_leads(request).exclude(status="archived").filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)); last=ActivityLog.objects.filter(lead__owner=request.user,event_type="discovery.completed").order_by("-created_at").first()
     return JsonResponse({"opportunities":active.count(),"qualified":_owned_leads(request).filter(status="qualified").count(),"proposals":_owned_leads(request).filter(status="proposal").count(),"replies":_owned_leads(request).filter(status="replied").count(),"high_match":LeadAnalysis.objects.filter(lead__owner=request.user,match_score__gte=80).count(),"followups_pending":FollowUp.objects.filter(lead__owner=request.user,status="draft").count(),"followups_upcoming":FollowUp.objects.filter(lead__owner=request.user,status="approved",scheduled_at__gt=now).count(),"followups_due":FollowUp.objects.filter(lead__owner=request.user,status="due").count(),"last_discovery_at":last.created_at if last else None,"last_discovery":last.metadata if last else None})
 
 @api_view(["GET"])
@@ -484,7 +497,11 @@ def create_meeting(request):
         if not contact: return Response({"detail":"Contact not found."},status=404)
         if client and contact.client_id!=client.id: return Response({"detail":"Contact does not belong to this client."},status=400)
     meeting=Meeting.objects.create(lead=lead,client=client,contact_id=contact_id,status="requested",scheduled_at=request.data.get("scheduled_at"),meeting_url=str(request.data.get("meeting_url") or ""),notes=str(request.data.get("notes") or ""),outcome=str(request.data.get("outcome") or ""),next_action=str(request.data.get("next_action") or ""))
-    sync_meeting_context(meeting); apply_meeting_status(meeting,status_value)
+    try:
+        sync_meeting_context(meeting); apply_meeting_status(meeting,status_value)
+    except ValueError as exc:
+        meeting.delete()
+        return Response({"detail":str(exc)},status=400)
     return Response(MeetingSerializer(meeting).data,status=201)
 
 @api_view(["PATCH","PUT"])
@@ -497,7 +514,10 @@ def update_meeting(request,pk):
     if "status" in request.data: requested_status=str(request.data["status"])
     for field in allowed:
         if field != "status" and field in request.data: setattr(meeting,field,request.data[field])
-    sync_meeting_context(meeting); apply_meeting_status(meeting,requested_status)
+    try:
+        sync_meeting_context(meeting); apply_meeting_status(meeting,requested_status)
+    except ValueError as exc:
+        return Response({"detail":str(exc)},status=400)
     return Response(MeetingSerializer(meeting).data)
 
 @api_view(["GET"])
@@ -517,7 +537,8 @@ def refresh_learning_view(request):
 
 @api_view(["GET"])
 def acquisition_queue(request):
-    limit=min(max(int(request.query_params.get("limit",50)),1),100)
+    try: limit=min(max(int(request.query_params.get("limit",50)),1),100)
+    except (TypeError,ValueError): return Response({"detail":"limit must be an integer."},status=400)
     return Response(AcquisitionOpportunitySerializer(build_queue(limit, owner=request.user),many=True).data)
 
 @api_view(["GET"])
@@ -529,7 +550,9 @@ def acquisition_next_actions(request):
 def acquisition_action(request,pk):
     obj=AcquisitionOpportunity.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
     if not obj:return Response({"detail":"Opportunity not found."},status=404)
-    action=str(request.data.get("action") or obj.recommended_action); mode=str(request.data.get("mode") or "approval_required"); approved=bool(request.data.get("approved",False))
+    action=str(request.data.get("action") or obj.recommended_action); mode=str(request.data.get("mode") or "approval_required")
+    try: approved=_parse_bool(request.data.get("approved"),False)
+    except ValueError as exc: return Response({"detail":str(exc),"executed":False},status=400)
     try:return Response(execute_action(obj,action,mode=mode,approved=approved))
     except ValueError as exc:return Response({"detail":str(exc),"executed":False},status=400)
 
