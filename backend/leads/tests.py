@@ -25,3 +25,22 @@ class SerializerLifecycleFieldHardeningTests(TestCase):
         self.assertEqual(lead.owner_id,owner.id)
         self.assertEqual(lead.status,"new")
         self.assertEqual(lead.title,"Updated title")
+
+
+class LearningOwnerIsolationTests(TestCase):
+    def test_learning_refresh_and_api_are_owner_scoped(self):
+        owner=get_user_model().objects.create_user(username="learning-owner-a",password="pass12345")
+        other=get_user_model().objects.create_user(username="learning-owner-b",password="pass12345")
+        Lead.objects.create(owner=owner,title="Owner lead",description="Django",source_url="https://example.com/a",source="owner-source")
+        Lead.objects.create(owner=other,title="Other lead",description="Django",source_url="https://example.com/b",source="other-source")
+        from .learning import refresh_learning
+        owner_stats=refresh_learning(owner=owner)
+        self.assertTrue(owner_stats)
+        self.assertTrue(all(row["owner_id"]==owner.id for row in owner_stats))
+        self.assertFalse(LearningStat.objects.filter(owner=other).exists())
+        from rest_framework.test import APIClient
+        client=APIClient()
+        client.force_authenticate(owner)
+        response=client.get("/api/learning/")
+        self.assertEqual(response.status_code,200)
+        self.assertTrue(all(row["owner"]==owner.id for row in response.data["stats"]))
