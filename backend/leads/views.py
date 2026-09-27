@@ -307,7 +307,6 @@ def send_followup(request,pk):
         return Response({"detail":"Follow-up is not due or is already being/sent."},status=409)
     followup.refresh_from_db()
     try:
-        followup.status="due"
         result=send_followup_email(followup)
         return Response(result)
     except ValueError as exc:
