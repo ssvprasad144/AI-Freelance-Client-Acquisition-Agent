@@ -64,3 +64,28 @@ class SourceAwareOutreachTests(TestCase):
         approved = self.client.post(f"/api/leads/{lead.id}/approve_proposal/")
         self.assertEqual(approved.status_code, 200)
         self.assertEqual(approved.data["status"], "approved")
+
+    def test_email_send_endpoint_rejects_unapproved_draft(self):
+        lead = self.make_lead("direct", contact_info={"email": "client@acme.io"})
+        self.qualify(lead)
+        response = self.client.post(f"/api/leads/{lead.id}/proposal/")
+        outreach = Outreach.objects.get(pk=response.data["outreach_id"])
+        with __import__("unittest").mock.patch("leads.views.send_email") as send_email:
+            rejected = self.client.post(f"/api/outreach/{outreach.id}/send/")
+        self.assertEqual(rejected.status_code, 409)
+        send_email.assert_not_called()
+        outreach.refresh_from_db()
+        self.assertEqual(outreach.status, "draft")
+
+    def test_email_send_claim_requires_approval(self):
+        lead = self.make_lead("direct", contact_info={"email": "client@acme.io"})
+        self.qualify(lead)
+        response = self.client.post(f"/api/leads/{lead.id}/proposal/")
+        outreach = Outreach.objects.get(pk=response.data["outreach_id"])
+        self.client.post(f"/api/leads/{lead.id}/approve_proposal/")
+        with __import__("unittest").mock.patch("leads.views.send_email", return_value={"sent": True, "outreach_id": outreach.id}) as send_email:
+            sent = self.client.post(f"/api/outreach/{outreach.id}/send/")
+        self.assertEqual(sent.status_code, 200)
+        send_email.assert_called_once()
+        outreach.refresh_from_db()
+        self.assertEqual(outreach.status, "sent")
