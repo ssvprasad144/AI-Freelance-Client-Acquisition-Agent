@@ -172,3 +172,43 @@ class DatabaseIntegrityAuditTests(TestCase):
         LearningStat.objects.create(owner=owner,dimension="source",key="same-key",attempts=1)
         with self.assertRaises(IntegrityError):
             LearningStat.objects.create(owner=owner,dimension="source",key="same-key",attempts=2)
+
+class DiscoveryIntegrityTests(TestCase):
+    def test_duplicate_normalized_source_url_is_blocked_per_owner(self):
+        from django.db import IntegrityError
+
+        owner=get_user_model().objects.create_user(username="discovery-owner",password="pass12345")
+        Lead.objects.create(
+            owner=owner,
+            title="First opportunity",
+            normalized_title="first opportunity",
+            normalized_url="example.com/opportunity/1",
+            company="Example Co",
+            description="First",
+            source_url="https://example.com/opportunity/1",
+        )
+        with self.assertRaises(IntegrityError):
+            Lead.objects.create(
+                owner=owner,
+                title="Duplicate opportunity",
+                normalized_title="duplicate opportunity",
+                normalized_url="example.com/opportunity/1",
+                company="Example Co",
+                description="Duplicate",
+                source_url="https://example.com/opportunity/1",
+            )
+
+    def test_same_normalized_source_url_is_allowed_for_different_owners(self):
+        owner=get_user_model().objects.create_user(username="discovery-owner-a",password="pass12345")
+        other=get_user_model().objects.create_user(username="discovery-owner-b",password="pass12345")
+        for user,title in ((owner,"Owner A lead"),(other,"Owner B lead")):
+            Lead.objects.create(
+                owner=user,
+                title=title,
+                normalized_title=title.lower(),
+                normalized_url="example.com/shared/1",
+                company="Example Co",
+                description="Shared public opportunity",
+                source_url="https://example.com/shared/1",
+            )
+        self.assertEqual(Lead.objects.filter(normalized_url="example.com/shared/1").count(),2)
