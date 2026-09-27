@@ -9,7 +9,6 @@ from .followup_intelligence import cancel_if_stopped
 
 def recover_stale_outbound_claims(max_age_minutes=30):
     cutoff = timezone.now() - timedelta(minutes=max_age_minutes)
-    recovered_followups = FollowUp.objects.filter(status="sending", updated_at__lt=cutoff).update(status="due")
     stale_followups=FollowUp.objects.filter(status="sending", updated_at__lt=cutoff)
     stale_outreach=Outreach.objects.filter(status="sending", updated_at__lt=cutoff)
     recovered_followups=stale_followups.update(status="due")
