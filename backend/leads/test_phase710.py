@@ -13,7 +13,7 @@ class Phase710Tests(TestCase):
         self.client=APIClient()
         user=get_user_model().objects.create_user(username="phase710",password="pass1234")
         self.client.force_authenticate(user)
-        self.lead=Lead.objects.create(owner=user,owner=user,
+        self.lead=Lead.objects.create(owner=user,
             title="Django AI automation dashboard",
             description="Build a Django AI automation dashboard.",
             source="freelancer",
