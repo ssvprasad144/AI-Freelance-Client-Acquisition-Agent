@@ -366,6 +366,7 @@ class ProviderResilienceAuditTests(TestCase):
 class ProductionSmokeAuditTests(TestCase):
     def setUp(self):
         self.user=get_user_model().objects.create_user(username="production-smoke-owner",password="StrongPass123!")
+        self.client=APIClient()
 
     def test_health_endpoint_reports_cron_jobs(self):
         response=self.client.get("/api/health/")
