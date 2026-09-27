@@ -162,7 +162,7 @@ def run_discovery(request):
     source=str(request.data.get("source") or "live").lower()
     limit=min(max(int(request.data.get("limit",settings.DISCOVERY_MAX_RESULTS)),1),settings.DISCOVERY_MAX_RESULTS)
     try:
-        payload=run_discovery_cycle(query=query,source=source,qualification_limit=limit,profile_id="manual")
+        payload=run_discovery_cycle(query=query,source=source,qualification_limit=limit,profile_id="manual",owner=request.user)
     except (LiveDiscoveryError,DiscoveryError) as exc:
         return Response({"status":"error","detail":str(exc)},status=502)
     return Response({"status":"success",**payload})
@@ -193,6 +193,8 @@ def create_reply(request,pk):
 
 class LeadViewSet(viewsets.ModelViewSet):
     queryset=Lead.objects.all().prefetch_related("analysis"); serializer_class=LeadSerializer
+    def get_queryset(self):
+        return Lead.objects.filter(owner=self.request.user).prefetch_related("analysis")
     @action(detail=True,methods=["post"],throttle_classes=[AIThrottle])
     def analyze(self,request,pk=None):
         lead=self.get_object(); data=analyze_lead(lead); analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data)
