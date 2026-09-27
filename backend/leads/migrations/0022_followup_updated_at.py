@@ -2,7 +2,10 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-    dependencies = [("leads", "0021_align_current_models")]
+    dependencies = [
+    ("leads", "0021_align_current_models"),
+    ("leads", "0021_learningstat_owner"),
+]
 
     operations = [
         migrations.AddField(
