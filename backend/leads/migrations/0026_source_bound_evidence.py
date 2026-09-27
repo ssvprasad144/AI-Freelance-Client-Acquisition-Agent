@@ -1,4 +1,4 @@
-from django.db import migrations, models
+from django.db import migrations, models\nfrom django.utils import timezone
 
 
 class Migration(migrations.Migration):
@@ -24,7 +24,7 @@ class Migration(migrations.Migration):
                 ("origin", models.CharField(choices=[("extracted", "Extracted"), ("ai_inferred", "AI inferred"), ("crawler", "Crawler")], default="extracted", max_length=30)),
                 ("validation_status", models.CharField(choices=[("validated", "Validated"), ("unvalidated", "Unvalidated")], default="unvalidated", max_length=30)),
                 ("source_supported", models.BooleanField(default=False)),
-                ("observed_at", models.DateTimeField()),
+                ("observed_at", models.DateTimeField(default=timezone.now)),
                 ("metadata", models.JSONField(blank=True, default=dict)),
                 ("lead", models.ForeignKey(on_delete=models.deletion.CASCADE, related_name="evidence", to="leads.lead")),
             ],
