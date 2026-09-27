@@ -24,7 +24,7 @@ from .acquisition import classify_reply, send_email, send_followup as send_follo
 from .outreach_adapters import resolve_outreach_destination
 from .proposal_service import create_proposal, current_version, revise_proposal, restore_version
 from .client_service import sync_lead_client, record_message, generate_client_intelligence
-from .meeting_service import sync_meeting_context, apply_meeting_status
+from .meeting_service import sync_meeting_context, apply_meeting_status, apply_meeting_status
 from .learning import log_acquisition_event, refresh_learning
 from .acquisition_orchestrator import build_queue, ensure_opportunity, execute_action, recalculate_opportunities
 from .outreach_intelligence import build_outreach_plans, create_plan, channel_metrics, mark_approved
