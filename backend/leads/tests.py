@@ -99,7 +99,7 @@ class SearchBudgetOptimizationTests(APITestBase):
     @patch("leads.discovery_cycle.DiscoveryService.discover")
     def test_healthy_inventory_skips_live_search(self,discover):
         from leads.discovery_cycle import run_discovery_cycle
-        for i in range(10): Lead.objects.create(title=f"Qualified {i}",description="Django project",source_url=f"https://example.com/{i}",status="qualified")
+        for i in range(10): Lead.objects.create(owner=self.user,title=f"Qualified {i}",description="Django project",source_url=f"https://example.com/{i}",status="qualified")
         with patch("leads.discovery_cycle.settings.DISCOVERY_TARGET_QUALIFIED_LEADS",10): result=run_discovery_cycle(query="Django freelance",profile_id="inventory-test")
         self.assertEqual(discover.call_count,0); self.assertFalse(result["searched"])
 
@@ -148,7 +148,7 @@ class WebSearchCostV2Tests(APITestBase):
     def test_dynamic_budget_reduces_searches_when_inventory_is_high(self,discover):
         discover.return_value={"source":"web_search","model":"gpt-4o-mini","leads":[]}
         for i in range(8):
-            Lead.objects.create(title=f"Fresh Qualified {i}",description="Django project",source_url=f"https://fresh.example/{i}",status="qualified",last_verified_at=timezone.now())
+            Lead.objects.create(owner=self.user,title=f"Fresh Qualified {i}",description="Django project",source_url=f"https://fresh.example/{i}",status="qualified",last_verified_at=timezone.now())
         with patch("leads.discovery_cycle.settings.DISCOVERY_TARGET_QUALIFIED_LEADS",10), patch("leads.discovery_cycle.settings.DISCOVERY_MAX_SEARCHES_PER_DAY",4):
             ActivityLog.objects.create(event_type="discovery.search",message="prior",metadata={})
             ActivityLog.objects.create(event_type="discovery.search",message="prior",metadata={})

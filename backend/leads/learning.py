@@ -9,20 +9,25 @@ def lead_reward(lead):
     if lead.meetings.filter(status__in=["requested","scheduled","completed"]).exists(): reward=max(reward,WEIGHTS["meeting"])
     if lead.status=="won": reward=WEIGHTS["won"]
     return reward
-def refresh_discovery_outcomes():
+def refresh_discovery_outcomes(owner=None):
     updated=0
     for stat in DiscoverySearchStat.objects.all().iterator():
         leads=Lead.objects.filter(discovery_profile=stat.profile_id,discovery_strategy=stat.strategy_id,discovery_query=stat.query,discovered_at__date=stat.search_date)
+        if owner is not None:
+            leads=leads.filter(owner=owner)
         replies=leads.filter(status__in=["replied","won"]).count()
         won=leads.filter(status="won").count()
         if stat.replied != replies or stat.won != won:
             stat.replied=replies; stat.won=won; stat.save(update_fields=["replied","won","updated_at"]); updated+=1
     return updated
 
-def refresh_learning():
-    refresh_discovery_outcomes()
+def refresh_learning(owner=None):
+    refresh_discovery_outcomes(owner=owner)
     buckets=defaultdict(list)
-    for lead in Lead.objects.all():
+    leads_qs=Lead.objects.all()
+    if owner is not None:
+        leads_qs=leads_qs.filter(owner=owner)
+    for lead in leads_qs:
         keys=[("source",lead.source),("lead_type",lead.lead_type)]
         if lead.discovery_profile: keys.append(("profile",lead.discovery_profile))
         if lead.discovery_strategy: keys.append(("strategy",lead.discovery_strategy))

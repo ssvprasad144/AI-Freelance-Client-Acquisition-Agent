@@ -237,9 +237,16 @@ class LeadViewSet(viewsets.ModelViewSet):
     def set_status(self,request,pk=None):
         lead=self.get_object(); new_status=str(request.data.get("status") or "").strip()
         if new_status not in {x[0] for x in Lead.STATUS}:return Response({"detail":"Invalid lead status."},status=400)
-        lead.status=new_status; lead.save(update_fields=["status","updated_at"])
+        lead.status=new_status
+        lead.save(update_fields=["status","updated_at"])
         event_map={"won":"won","lost":"lost","qualified":"qualified"}
         if new_status in event_map: log_acquisition_event(lead,event_map[new_status])
+        if new_status in {"won","lost","archived"}:
+            FollowUpSequence.objects.filter(lead=lead,status="active").update(status="completed")
+            FollowUp.objects.filter(lead=lead,status__in=["draft","approved","due"]).update(status="cancelled")
+            if lead.client_id:
+                lead.client.status="won" if new_status=="won" else ("lost" if new_status=="lost" else "archived")
+                lead.client.save(update_fields=["status","updated_at"])
         ActivityLog.objects.create(lead=lead,event_type="lead.status_changed",message=f"Lead status changed to {new_status}.",metadata={"status":new_status})
         return Response(LeadSerializer(lead).data)
 
@@ -487,12 +494,12 @@ def acquisition_events(request):
 
 @api_view(["GET"])
 def learning(request):
-    refresh_learning()
+    refresh_learning(owner=request.user)
     return Response({"stats":LearningStatSerializer(LearningStat.objects.all()[:100],many=True).data})
 
 @api_view(["POST"])
 def refresh_learning_view(request):
-    stats=refresh_learning()
+    stats=refresh_learning(owner=request.user)
     return Response({"refreshed":len(stats),"stats":stats[:100]})
 
 
