@@ -487,12 +487,12 @@ def acquisition_events(request):
 
 @api_view(["GET"])
 def learning(request):
-    refresh_learning()
+    refresh_learning(owner=request.user)
     return Response({"stats":LearningStatSerializer(LearningStat.objects.all()[:100],many=True).data})
 
 @api_view(["POST"])
 def refresh_learning_view(request):
-    stats=refresh_learning()
+    stats=refresh_learning(owner=request.user)
     return Response({"refreshed":len(stats),"stats":stats[:100]})
 
 
