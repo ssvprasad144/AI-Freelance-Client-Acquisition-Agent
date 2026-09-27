@@ -28,4 +28,6 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(blank=True, db_index=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name="acquisition_clients", to=settings.AUTH_USER_MODEL),
         ),
         migrations.RunPython(backfill_owners, migrations.RunPython.noop),
+        migrations.AlterField(model_name="client", name="normalized_company", field=models.CharField(db_index=True, max_length=255)),
+        migrations.AddConstraint(model_name="client", constraint=models.UniqueConstraint(fields=["owner", "normalized_company"], name="unique_client_owner_company")),
     ]
