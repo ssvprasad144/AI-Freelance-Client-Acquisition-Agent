@@ -1,6 +1,7 @@
 import json
 import logging
 from urllib.parse import urlsplit
+from ipaddress import ip_address
 from typing import Any
 
 from django.conf import settings
@@ -16,7 +17,13 @@ def _safe_public_url(value):
         if parts.scheme not in {"http", "https"} or not parts.hostname:
             return False
         host = parts.hostname.lower().rstrip(".")
-        return host not in {"localhost", "localhost.localdomain"} and not host.endswith(".local")
+        if host in {"localhost", "localhost.localdomain"} or host.endswith(".local"):
+            return False
+        try:
+            ip = ip_address(host)
+        except ValueError:
+            return True
+        return not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified)
     except (TypeError, ValueError):
         return False
 
