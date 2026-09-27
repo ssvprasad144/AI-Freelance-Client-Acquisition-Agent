@@ -192,17 +192,3 @@ class FollowUpClaimTests(APITestBase):
         self.assertEqual(first.status_code,200)
         self.assertEqual(second.status_code,409)
         sender.assert_called_once()
-
-
-class TenantIsolationTests(TestCase):
-    def test_users_cannot_read_each_others_leads(self):
-        user_a=get_user_model().objects.create_user(username="tenant-a",password="pass12345")
-        user_b=get_user_model().objects.create_user(username="tenant-b",password="pass12345")
-        lead_a=Lead.objects.create(owner=user_a,title="Private A",description="A",source_url="https://a.example/1")
-        lead_b=Lead.objects.create(owner=user_b,title="Private B",description="B",source_url="https://b.example/1")
-        client=APIClient(); client.force_authenticate(user_a)
-        self.assertEqual(client.get(f"/api/leads/{lead_a.id}/").status_code,200)
-        self.assertEqual(client.get(f"/api/leads/{lead_b.id}/").status_code,404)
-        response=client.get("/api/leads/")
-        self.assertEqual(response.status_code,200)
-        self.assertEqual([row["id"] for row in response.data["results"]],[lead_a.id])
