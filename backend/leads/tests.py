@@ -251,3 +251,33 @@ class SourceBoundEvidenceIntegrityTests(TestCase):
         evidence=LeadEvidence.objects.filter(lead__owner=owner)
         self.assertTrue(evidence.filter(field_name="description",source_supported=True,validation_status="validated").exists())
         self.assertFalse(evidence.filter(field_name="action_url",source_supported=True).exists())
+
+
+class AIQualificationLifecycleTests(TestCase):
+    def setUp(self):
+        self.user=get_user_model().objects.create_user(username="ai-lifecycle-owner",password="pass12345")
+
+    def test_invalid_boolean_match_score_is_rejected(self):
+        from .ai_service import _validated_analysis
+        payload={"relevant":True,"match_score":True,"service_match":"Django","requirements":[],"pain_points":[],"recommended_approach":"Review scope.","matching_projects":[],"confidence":80}
+        with self.assertRaises(ValueError):
+            _validated_analysis(payload)
+
+    @patch("leads.ai_service.OpenAI")
+    @patch("leads.ai_service.settings.OPENAI_API_KEY","test-key")
+    def test_provider_failure_uses_deterministic_fallback(self, openai_cls):
+        openai_cls.return_value.responses.create.side_effect=RuntimeError("provider unavailable")
+        from .ai_service import analyze_lead
+        lead=Lead.objects.create(owner=self.user,title="Build Django API",description="Need a Django API for an automation platform.",source_url="https://example.com/job")
+        result=analyze_lead(lead)
+        self.assertEqual(result["model"],"deterministic-fallback")
+        self.assertTrue(ActivityLog.objects.filter(lead=lead,event_type="ai.provider_error").exists())
+
+    def test_lead_content_update_invalidates_existing_analysis(self):
+        lead=Lead.objects.create(owner=self.user,title="Build Django API",description="Need a Django API.",source_url="https://example.com/job")
+        LeadAnalysis.objects.create(lead=lead,input_fingerprint="stale",relevant=True,match_score=90)
+        client=APIClient()
+        client.force_authenticate(self.user)
+        response=client.patch(f"/api/leads/{lead.id}/",{"description":"Need a React dashboard instead."},format="json")
+        self.assertEqual(response.status_code,200)
+        self.assertFalse(LeadAnalysis.objects.filter(lead=lead).exists())

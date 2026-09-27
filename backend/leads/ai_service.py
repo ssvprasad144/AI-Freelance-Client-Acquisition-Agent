@@ -1,3 +1,4 @@
+import hashlib
 import json
 from typing import Any
 
@@ -24,6 +25,11 @@ Never invent clients, outcomes, metrics, testimonials, integrations, or sent mes
 Tie the opening to the client's stated requirement, cite only matching projects, and end with one concrete low-friction next step.
 Keep it under 180 words.
 """
+
+
+def analysis_fingerprint(lead):
+    payload={"title":lead.title,"company":lead.company,"description":lead.description,"budget_text":lead.budget_text,"technologies":lead.technologies or [],"lead_type":lead.lead_type}
+    return hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(",",":" )).encode("utf-8")).hexdigest()
 
 
 def deterministic_analysis(lead) -> dict[str, Any]:
@@ -55,6 +61,7 @@ def deterministic_analysis(lead) -> dict[str, Any]:
         "model": "deterministic-fallback",
         "input_tokens": 0,
         "output_tokens": 0,
+        "input_fingerprint": analysis_fingerprint(lead),
     }
 
 
@@ -73,6 +80,8 @@ def _validated_analysis(data):
     if not isinstance(data,dict) or any(k not in data for k in required):
         raise ValueError("AI qualification response is missing required fields.")
     for key,kind in required.items():
+        if kind is int and isinstance(data[key],bool):
+            raise ValueError(f"AI qualification field {key} has an invalid type.")
         if not isinstance(data[key],kind):
             raise ValueError(f"AI qualification field {key} has an invalid type.")
     data["match_score"]=max(0,min(100,data["match_score"]))
@@ -103,14 +112,18 @@ def analyze_lead(lead) -> dict[str, Any]:
             "lead_type": lead.lead_type,
         },
     }
-    response = client.responses.create(
-        model=settings.OPENAI_MODEL,
+    try:
+        response = client.responses.create(
+            model=settings.OPENAI_MODEL,
         input=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": json.dumps(payload, separators=(",", ":"))},
         ],
-        max_output_tokens=settings.AI_QUALIFICATION_MAX_OUTPUT_TOKENS,
-    )
+            max_output_tokens=settings.AI_QUALIFICATION_MAX_OUTPUT_TOKENS,
+        )
+    except Exception as exc:
+        ActivityLog.objects.create(lead=lead,event_type="ai.provider_error",message="AI qualification provider failed; deterministic fallback used.",metadata={"error":str(exc)[:500],"model":settings.OPENAI_MODEL})
+        return deterministic_analysis(lead)
     try:
         data = _validated_analysis(json.loads(response.output_text))
     except (json.JSONDecodeError, TypeError, ValueError) as exc:
@@ -121,6 +134,7 @@ def analyze_lead(lead) -> dict[str, Any]:
         "model": settings.OPENAI_MODEL,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
+        "input_fingerprint": analysis_fingerprint(lead),
     })
     return data
 
