@@ -1,3 +1,4 @@
+import hashlib
 import json
 from typing import Any
 
@@ -24,6 +25,11 @@ Never invent clients, outcomes, metrics, testimonials, integrations, or sent mes
 Tie the opening to the client's stated requirement, cite only matching projects, and end with one concrete low-friction next step.
 Keep it under 180 words.
 """
+
+
+def analysis_fingerprint(lead):
+    payload={"title":lead.title,"company":lead.company,"description":lead.description,"budget_text":lead.budget_text,"technologies":lead.technologies or [],"lead_type":lead.lead_type}
+    return hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(",",":" )).encode("utf-8")).hexdigest()
 
 
 def deterministic_analysis(lead) -> dict[str, Any]:
@@ -73,6 +79,8 @@ def _validated_analysis(data):
     if not isinstance(data,dict) or any(k not in data for k in required):
         raise ValueError("AI qualification response is missing required fields.")
     for key,kind in required.items():
+        if kind is int and isinstance(data[key],bool):
+            raise ValueError(f"AI qualification field {key} has an invalid type.")
         if not isinstance(data[key],kind):
             raise ValueError(f"AI qualification field {key} has an invalid type.")
     data["match_score"]=max(0,min(100,data["match_score"]))
