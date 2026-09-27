@@ -8,6 +8,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="followup",
             name="updated_at",
-            field=models.DateTimeField(auto_now=True),
+            field=models.DateTimeField(auto_now=True, null=True),
         ),
     ]
