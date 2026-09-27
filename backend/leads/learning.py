@@ -2,6 +2,7 @@ from collections import defaultdict
 from django.db.models import Q
 from .models import AcquisitionEvent, DiscoverySearchStat, Lead, LearningStat, Meeting, Outreach
 WEIGHTS={"qualified":1.0,"proposal":2.0,"sent":3.0,"reply":5.0,"meeting":10.0,"won":25.0,"lost":-5.0}
+MIN_LEADS_FOR_LEARNING=2
 def lead_reward(lead):
     status=lead.status
     reward=WEIGHTS.get(status,0)
@@ -48,6 +49,8 @@ def refresh_learning(owner=None):
             replies+=int(lead.replies.exists())
             meetings+=int(lead.meetings.filter(status__in=["requested","scheduled","completed"]).exists())
             wins+=int(lead.status=="won"); losses+=int(lead.status=="lost"); reward+=lead_reward(lead)
+        if attempts < MIN_LEADS_FOR_LEARNING:
+            reward=round(reward,3)
         LearningStat.objects.create(dimension=dimension,key=key,attempts=attempts,qualified=qualified,proposals=proposals,sent=sent,replies=replies,meetings=meetings,wins=wins,losses=losses,reward=round(reward,3))
     return list(LearningStat.objects.values().order_by("-reward","-attempts")[:100])
 def log_acquisition_event(lead,event_type,metadata=None):
