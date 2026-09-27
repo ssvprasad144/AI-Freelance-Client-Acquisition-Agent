@@ -38,7 +38,7 @@ def validate_workspace(owner):
     leads=Lead.objects.filter(owner=owner).select_related("client","contact").prefetch_related("followups","outreach","proposals","revenue")
     report["leads"]=leads.count()
     report["clients"]=Client.objects.filter(owner=owner).count()
-    for lead in leads.iterator():
+    for lead in leads:
         for code in validate_pipeline_invariants(lead):
             report["violations"].append({"lead_id":lead.id,"code":code})
     orphan_clients=Client.objects.filter(owner__isnull=True).count()
