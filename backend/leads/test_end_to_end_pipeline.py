@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from .models import AcquisitionOpportunity, FollowUp, FollowUpSequence, Lead
+from .models import AcquisitionOpportunity, ActivityLog, Client, ClientIntelligence, FollowUp, FollowUpSequence, Lead
 
 
 class EndToEndPipelineTests(TestCase):
@@ -93,3 +93,43 @@ class LeadQualityGateTests(TestCase):
         from .lead_optimizer import should_ai_qualify
         lead = Lead.objects.create(title="Build Django automation platform", description="Need a Django API and automation workflow for a client platform.", source_url="https://example.com/project", technologies=["Django", "Python"], company="Example")
         self.assertTrue(should_ai_qualify(lead))
+
+
+class ClientIntelligenceHardeningTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="client-owner", password="pass12345")
+        self.client_obj = Client.objects.create(
+            owner=self.user,
+            company="Example Client",
+            normalized_company="example client",
+        )
+
+    @patch("leads.client_service.OpenAI")
+    @patch("leads.client_service.settings.OPENAI_API_KEY", "test-key")
+    def test_invalid_ai_json_falls_back_to_deterministic(self, openai_cls):
+        response = type("Response", (), {"output_text": "{not-json"})()
+        openai_cls.return_value.responses.create.return_value = response
+
+        from .client_service import generate_client_intelligence
+        intelligence = generate_client_intelligence(self.client_obj)
+
+        self.assertEqual(intelligence.model, "deterministic")
+        self.assertEqual(intelligence.confidence, 50)
+        self.assertTrue(ActivityLog.objects.filter(event_type="client_intelligence.fallback", metadata__client_id=self.client_obj.id).exists())
+
+    @patch("leads.client_service.OpenAI")
+    @patch("leads.client_service.settings.OPENAI_API_KEY", "test-key")
+    def test_valid_ai_json_is_validated_and_confidence_is_bounded(self, openai_cls):
+        response = type("Response", (), {
+            "output_text": '{"summary":"Observed history only","communication_style":"concise","preferences":["email"],"objections":["budget"],"recommended_approach":"Ask for the next concrete step.","confidence":150}'
+        })()
+        openai_cls.return_value.responses.create.return_value = response
+
+        from .client_service import generate_client_intelligence
+        intelligence = generate_client_intelligence(self.client_obj)
+
+        self.assertEqual(intelligence.model, "test-model")
+        self.assertEqual(intelligence.confidence, 100)
+        self.assertEqual(intelligence.preferences, ["email"])
+        self.assertEqual(intelligence.objections, ["budget"])
+        self.assertFalse(ActivityLog.objects.filter(event_type="client_intelligence.fallback").exists())
