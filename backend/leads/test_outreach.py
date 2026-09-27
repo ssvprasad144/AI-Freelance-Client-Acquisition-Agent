@@ -1,8 +1,10 @@
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from unittest.mock import patch
+from django.utils import timezone
 from rest_framework.test import APIClient
 
-from .models import Lead, LeadAnalysis, Outreach
+from .models import FollowUp, Lead, LeadAnalysis, LeadEvidence, Outreach
 
 
 class SourceAwareOutreachTests(TestCase):
@@ -64,3 +66,50 @@ class SourceAwareOutreachTests(TestCase):
         approved = self.client.post(f"/api/leads/{lead.id}/approve_proposal/")
         self.assertEqual(approved.status_code, 200)
         self.assertEqual(approved.data["status"], "approved")
+
+    def test_followup_send_rejects_already_claimed_followup(self):
+        lead = self.make_lead("direct", contact_info={"email": "client@example.com"})
+        followup = FollowUp.objects.create(
+            lead=lead,
+            scheduled_at=timezone.now(),
+            message="Following up on the opportunity.",
+            status="sending",
+        )
+        response = self.client.post(f"/api/followups/{followup.id}/send/")
+        self.assertEqual(response.status_code, 409)
+        followup.refresh_from_db()
+        self.assertEqual(followup.status, "sending")
+
+    def test_draft_email_cannot_bypass_approval(self):
+        lead = self.make_lead("direct", contact_info={"email": "client@example.com"})
+        self.qualify(lead)
+        response = self.client.post(f"/api/leads/{lead.id}/proposal/")
+        outreach = Outreach.objects.get(pk=response.data["outreach_id"])
+        send_response = self.client.post(f"/api/outreach/{outreach.id}/send/")
+        self.assertEqual(send_response.status_code, 409)
+        outreach.refresh_from_db()
+        self.assertEqual(outreach.status, "draft")
+
+    @patch("leads.acquisition.smtplib.SMTP")
+    @override_settings(OUTREACH_ENABLED=True, SMTP_HOST="smtp.test", SMTP_PORT=587, SMTP_USE_TLS=False, SMTP_USERNAME="", SMTP_PASSWORD="", OUTREACH_FROM_EMAIL="sender@acme.io")
+    def test_approved_email_can_send_after_claim(self, smtp_cls):
+        smtp = smtp_cls.return_value.__enter__.return_value
+        lead = self.make_lead("direct", contact_info={"email": "client@acme.io"})
+        self.qualify(lead)
+        LeadEvidence.objects.create(
+            lead=lead,
+            field_name="contact_info.email",
+            value="client@acme.io",
+            evidence_hash="email-supported-test",
+            source_url=lead.source_url,
+            excerpt="Contact client@acme.io for the opportunity.",
+            source_supported=True,
+        )
+        response = self.client.post(f"/api/leads/{lead.id}/proposal/")
+        outreach = Outreach.objects.get(pk=response.data["outreach_id"])
+        self.client.post(f"/api/leads/{lead.id}/approve_proposal/")
+        send_response = self.client.post(f"/api/outreach/{outreach.id}/send/")
+        self.assertEqual(send_response.status_code, 200)
+        outreach.refresh_from_db()
+        self.assertEqual(outreach.status, "sent")
+        smtp.send_message.assert_called_once()

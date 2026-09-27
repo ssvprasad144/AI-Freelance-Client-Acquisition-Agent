@@ -307,7 +307,6 @@ def send_followup(request,pk):
         return Response({"detail":"Follow-up is not due or is already being/sent."},status=409)
     followup.refresh_from_db()
     try:
-        followup.status="due"
         result=send_followup_email(followup)
         return Response(result)
     except ValueError as exc:
@@ -322,7 +321,7 @@ def send_followup(request,pk):
 def send_outreach(request,pk):
     try: outreach=Outreach.objects.select_related("lead").get(pk=pk)
     except Outreach.DoesNotExist: return Response({"detail":"Outreach not found."},status=404)
-    claimed=Outreach.objects.filter(pk=pk,status__in=["draft","approved","opened"]).update(status="sending")
+    claimed=Outreach.objects.filter(pk=pk,status="approved").update(status="sending")
     if not claimed:
         return Response({"detail":"Outreach is not actionable or has already been sent."},status=409)
     outreach.refresh_from_db()

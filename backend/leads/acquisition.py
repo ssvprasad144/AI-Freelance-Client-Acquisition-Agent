@@ -61,8 +61,8 @@ def classify_reply(reply):
 def send_email(outreach):
     if outreach.medium != "email":
         raise ValueError("This outreach uses a manual platform action. Open its destination and submit it there.")
-    if outreach.status!="approved":
-        raise ValueError("Only approved outreach can be sent.")
+    if outreach.status not in {"approved", "sending"}:
+        raise ValueError("Only approved or claimed outreach can be sent.")
     lead=outreach.lead
     try:
         recipient=validate_discovered_email((lead.contact_info or {}).get("email"))
@@ -90,8 +90,8 @@ def send_email(outreach):
 
 
 def send_followup(followup):
-    if followup.status!="due":
-        raise ValueError("Only due follow-ups can be sent.")
+    if followup.status not in {"due", "sending"}:
+        raise ValueError("Only due or claimed follow-ups can be sent.")
     if followup.medium != "email":
         raise ValueError(f"Manual follow-up required: open {followup.destination_url or 'the source destination'} and submit the approved draft there.")
     try:

@@ -57,14 +57,28 @@ class PublicCrawlerSafetyTests(TestCase):
     def test_credential_urls_are_blocked(self):
         from .discovery.public_crawler import CrawlError,_validate_url
         with self.assertRaises(CrawlError): _validate_url("https://user:password@example.com/jobs")
+    def test_malformed_or_duplicate_citations_cannot_cross_source_support(self):
+        from .discovery.live_provider import _source_findings
+        response = type("SearchResponse", (), {"output": [type("Message", (), {"type": "message", "content": [type("Text", (), {"type": "output_text", "text": "Acme Labs needs a Django engineer.", "annotations": [
+            type("Citation", (), {"type": "url_citation", "url": "https://acme.test/jobs/42", "start_index": 35})(),
+            type("Citation", (), {"type": "url_citation", "url": "https://acme.test/jobs/42", "start_index": 35})(),
+            type("Citation", (), {"type": "url_citation", "url": None, "start_index": 35})(),
+            type("Citation", (), {"type": "url_citation", "url": "https://other.test/jobs/9", "start_index": "invalid"})(),
+        ]})()]})()]})()
+        findings = _source_findings(response)
+        self.assertEqual(len(findings), 2)
+        from .data_quality import source_supported_evidence
+        evidence = [{"field": "company", "value": "Acme Labs", "source_url": "https://other.test/jobs/9", "excerpt": "Acme Labs needs a Django engineer."}]
+        self.assertEqual(source_supported_evidence(evidence, findings), [])
     @patch("leads.discovery.live_provider.OpenAI")
     def test_live_discovery_returns_search_results_without_crawling(self,client):
         client.return_value.responses.create.side_effect=[
-            type("SearchResponse",(),{"output_text":"Search finding: Django role at Example, source https://example.com/jobs/1"})(),
+            type("SearchResponse",(),{"output_text":"Django role at Example.","output":[type("Message",(),{"type":"message","content":[type("Text",(),{"type":"output_text","text":"Django role at Example.","annotations":[type("Citation",(),{"type":"url_citation","url":"https://example.com/jobs/1","start_index":23})()]})()]})()]})(),
             type("StructuredResponse",(),{"output_text":'{"leads":[{"title":"Django role","company":"Example","description":"Build Django app","source":"web_search","source_url":"https://example.com/jobs/1","action_url":"https://example.com/jobs/1","lead_type":"freelance","budget_text":"","technologies":["Django"],"contact_info":{}}]}'})(),
         ]; from .discovery.live_provider import discover_live
         with patch("leads.discovery.live_provider.settings.OPENAI_API_KEY","test-key"),patch("leads.discovery.live_provider.settings.DISCOVERY_MODEL","gpt-4o-mini"),patch("leads.discovery.live_provider.settings.DISCOVERY_SEARCH_CONTEXT_SIZE","medium"),patch("leads.discovery.live_provider.settings.DISCOVERY_MAX_RESULTS",5): result=discover_live("Django freelance")
         self.assertEqual(len(result["leads"]),1)
+        self.assertEqual(result["source_findings"], [{"url":"https://example.com/jobs/1","excerpt":"Django role at Example."}])
         self.assertEqual(client.return_value.responses.create.call_count,2)
 
 class DiscoveryOptimizationTests(APITestBase):
