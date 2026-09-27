@@ -150,7 +150,7 @@ def qualified_leads(request):
 
 @api_view(["POST"])
 def approve_followup(request,pk):
-    try:followup=FollowUp.objects.get(pk=pk)
+    try:followup=FollowUp.objects.select_related("lead").get(pk=pk,lead__owner=request.user)
     except FollowUp.DoesNotExist:return Response({"detail":"Follow-up not found."},status=404)
     if followup.status!="draft":return Response({"detail":"Follow-up is not in draft state."},status=400)
     followup.status="approved"; followup.approved_at=timezone.now(); followup.save(update_fields=["status","approved_at"])
@@ -499,11 +499,11 @@ def refresh_learning_view(request):
 @api_view(["GET"])
 def acquisition_queue(request):
     limit=min(max(int(request.query_params.get("limit",50)),1),100)
-    return Response(AcquisitionOpportunitySerializer(build_queue(limit),many=True).data)
+    return Response(AcquisitionOpportunitySerializer(build_queue(limit, owner=request.user),many=True).data)
 
 @api_view(["GET"])
 def acquisition_next_actions(request):
-    rows=build_queue(20)
+    rows=build_queue(20, owner=request.user)
     return Response([{"opportunity_id":x.id,"lead_id":x.lead_id,"action":x.recommended_action,"score":x.score,"reason":x.reason} for x in rows])
 
 @api_view(["POST"])
@@ -515,12 +515,12 @@ def acquisition_action(request,pk):
     except ValueError as exc:return Response({"detail":str(exc),"executed":False},status=400)
 
 @api_view(["POST"])
-def acquisition_recalculate(request): return Response(recalculate_opportunities())
+def acquisition_recalculate(request): return Response(recalculate_opportunities(owner=request.user))
 
 
 @api_view(["GET"])
 def outreach_strategy(request):
-    return Response({"plans":OutreachPlanSerializer(build_outreach_plans(50),many=True).data,"channels":channel_metrics()})
+    return Response({"plans":OutreachPlanSerializer(build_outreach_plans(50, owner=request.user),many=True).data,"channels":channel_metrics(owner=request.user)})
 
 @api_view(["POST"])
 def outreach_plan(request):
@@ -539,7 +539,7 @@ def approve_outreach_plan(request,pk):
 
 
 @api_view(["GET"])
-def revenue_dashboard(request): return Response({**revenue_metrics(),"optimization":optimization_report()})
+def revenue_dashboard(request): return Response({**revenue_metrics(owner=request.user),"optimization":optimization_report(owner=request.user)})
 
 @api_view(["GET"])
 def revenue_records(request): return _paginate(request,RevenueRecord.objects.filter(lead__owner=request.user).select_related("lead").all(),RevenueRecordSerializer)
