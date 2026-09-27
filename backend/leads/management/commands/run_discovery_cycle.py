@@ -3,6 +3,7 @@ import uuid
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
+from django.db import connection
 from django.utils import timezone
 
 from leads.discovery_cycle import run_discovery_cycle
@@ -20,6 +21,15 @@ class Command(BaseCommand):
         parser.add_argument("--interval", type=int, default=settings.DISCOVERY_WORKER_INTERVAL)
 
     def handle(self, *args, **options):
+        lock_acquired = True
+        if connection.vendor == "postgresql":
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_try_advisory_lock(%s)", [982451])
+                lock_acquired = bool(cursor.fetchone()[0])
+            if not lock_acquired:
+                self.stdout.write(self.style.WARNING("Discovery Cron skipped: another instance is already running."))
+                return
+        try:
         interval = max(options["interval"], 60)
         while True:
             run_id = uuid.uuid4().hex
@@ -64,3 +74,8 @@ class Command(BaseCommand):
             except KeyboardInterrupt:
                 self.stdout.write(self.style.WARNING("Discovery Cron stopped."))
                 break
+
+        finally:
+            if lock_acquired and connection.vendor == "postgresql":
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_advisory_unlock(%s)", [982451])
