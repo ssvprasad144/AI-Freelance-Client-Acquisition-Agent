@@ -17,6 +17,7 @@ class Lead(models.Model):
     class Meta:
         ordering=["-created_at"]
         constraints=[models.UniqueConstraint(fields=["owner","normalized_url"],condition=~models.Q(normalized_url=""),name="unique_lead_owner_normalized_url")]
+        indexes=[models.Index(fields=["owner","status"]),models.Index(fields=["owner","updated_at"]),models.Index(fields=["owner","discovered_at"])]
     def __str__(self): return self.title
 
 class LeadEvidence(models.Model):
@@ -52,7 +53,9 @@ class Proposal(models.Model):
     approved_at=models.DateTimeField(null=True,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)
     updated_at=models.DateTimeField(auto_now=True)
-    class Meta: ordering=["-created_at"]
+    class Meta:
+        ordering=["-created_at"]
+        indexes=[models.Index(fields=["lead","status"]),models.Index(fields=["lead","updated_at"])]
 
 class ProposalVersion(models.Model):
     proposal=models.ForeignKey(Proposal,on_delete=models.CASCADE,related_name="versions")
