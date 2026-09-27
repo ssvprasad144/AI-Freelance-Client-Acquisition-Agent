@@ -81,7 +81,7 @@ services:
       - key: AI_REPLY_MAX_OUTPUT_TOKENS
         value: "180"
       - key: FOLLOWUP_WORKER_INTERVAL
-        value: "60"
+        value: "1800"
       - key: SECURE_SSL_REDIRECT
         value: "true"
 
@@ -167,7 +167,7 @@ services:
       - key: AI_REPLY_MAX_OUTPUT_TOKENS
         value: "180"
       - key: FOLLOWUP_WORKER_INTERVAL
-        value: "60"
+        value: "1800"
       - key: SECURE_SSL_REDIRECT
         value: "true"
 
@@ -254,6 +254,6 @@ services:
       - key: AI_REPLY_MAX_OUTPUT_TOKENS
         value: "180"
       - key: FOLLOWUP_WORKER_INTERVAL
-        value: "60"
+        value: "1800"
       - key: SECURE_SSL_REDIRECT
         value: "true"
