@@ -1,8 +1,9 @@
+import hashlib
 import re
 from urllib.parse import urlsplit
 
 from django.conf import settings
-from django.db import models, transaction
+from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
 from .ai_service import analyze_lead
@@ -13,39 +14,122 @@ from .discovery.profiles import (
 )
 from .discovery.service import DiscoveryService
 from .lead_optimizer import ai_skip_analysis, local_lead_score, should_ai_qualify
-from .models import ActivityLog, DiscoveryDomainStat, DiscoveryQueryCache, DiscoverySearchStat, Lead, LeadAnalysis
+from .data_quality import normalize_url, validate_lead_record
+from .models import ActivityLog, DiscoveryDomainStat, DiscoveryQueryCache, DiscoverySearchStat, Lead, LeadAnalysis, LeadEvidence
 
 
 def _normalize_title(value):
-    return re.sub(r"\\s+", " ", re.sub(r"[^a-z0-9 ]", " ", str(value).lower())).strip()
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", str(value).lower())).strip()
 
 def _normalize_url(value):
     try:
-        parts=urlsplit(str(value).strip()); return f"{parts.netloc.lower().removeprefix('www.')}{parts.path.rstrip('/')}"
-    except Exception: return str(value).strip().lower().rstrip("/")
+        return normalize_url(value)
+    except ValueError:
+        return ""
 
 def _domain(value):
     try: return urlsplit(str(value)).netloc.lower().removeprefix("www.")
     except Exception: return ""
 
-def _store(items,profile_id="",strategy_id="",query=""):
+def _store(items,profile_id="",strategy_id="",query="",search_findings="",source_checked=False):
     created=duplicates=invalid=0
-    with transaction.atomic():
-        for item in items:
-            if not item.get("title") or not item.get("description") or not item.get("source_url"): invalid+=1; continue
-            nu=_normalize_url(item["source_url"]); nt=_normalize_title(item["title"])
-            existing=Lead.objects.filter(normalized_url=nu).first() or Lead.objects.filter(normalized_title=nt,company__iexact=item.get("company","")).first()
-            if existing:
-                existing.last_verified_at=timezone.now()
-                if item.get("expires_at"): existing.expires_at=item.get("expires_at")
-                if item.get("action_url"): existing.action_url=item.get("action_url")
-                existing.save(update_fields=["last_verified_at","expires_at","action_url","updated_at"]); duplicates+=1; continue
-            Lead.objects.create(title=item["title"],normalized_title=nt,normalized_url=nu,company=item.get("company",""),description=item["description"],source=item.get("source") or "web_search",source_url=item["source_url"],action_url=item.get("action_url") or item["source_url"],lead_type=item.get("lead_type","freelance"),budget_text=item.get("budget_text",""),technologies=item.get("technologies") or [],contact_info=item.get("contact_info") or {},discovery_profile=profile_id,discovery_strategy=strategy_id,discovery_query=query,discovered_at=timezone.now(),posted_at=item.get("posted_at") or None,expires_at=item.get("expires_at") or None,last_verified_at=timezone.now()); created+=1
+    for index,item in enumerate(items):
+        try:
+            normalized=validate_lead_record(item,search_findings)
+            nt=_normalize_title(normalized["title"])
+            nu=normalized["source_url"]
+            now=timezone.now()
+            with transaction.atomic():
+                existing=(Lead.objects.filter(normalized_url=nu).first() or
+                          Lead.objects.filter(normalized_title=nt,company__iexact=normalized["company"]).exclude(company="").first())
+                if existing:
+                    updates=[]
+                    if source_checked:
+                        existing.last_checked_at=now; updates.append("last_checked_at")
+                    if normalized.get("expires_at") and source_checked:
+                        existing.expires_at=normalized["expires_at"]; updates.append("expires_at")
+                    if normalized.get("posted_at") and source_checked and not existing.posted_at:
+                        existing.posted_at=normalized["posted_at"]; updates.append("posted_at")
+                    if normalized.get("action_url") and source_checked and existing.action_url == existing.source_url:
+                        existing.action_url=normalized["action_url"]; updates.append("action_url")
+                    if normalized.get("crawler_metadata"):
+                        existing.last_verified_at=now; updates.append("last_verified_at")
+                    if updates: existing.save(update_fields=[*updates,"updated_at"])
+                    _save_evidence(existing,normalized.get("evidence",[]))
+                    duplicates+=1
+                    continue
+                lead=Lead.objects.create(
+                    title=normalized["title"],normalized_title=nt,normalized_url=nu,
+                    company=normalized["company"],description=normalized["description"],
+                    source=normalized.get("source") or "web_search",source_url=nu,
+                    action_url=normalized.get("action_url") or nu,
+                    company_website=normalized.get("company_website", ""),
+                    location=normalized.get("location", ""),
+                    company_description=normalized.get("company_description", ""),
+                    hiring_signal=normalized.get("hiring_signal", ""),
+                    lead_type=normalized.get("lead_type","freelance"),budget_text=normalized.get("budget_text",""),
+                    technologies=normalized.get("technologies") or [],contact_info=normalized.get("contact_info") or {},
+                    discovery_profile=profile_id,discovery_strategy=strategy_id,discovery_query=query,
+                    discovered_at=now,posted_at=normalized.get("posted_at"),expires_at=normalized.get("expires_at"),
+                    last_checked_at=now if source_checked else None,
+                    last_verified_at=now if normalized.get("crawler_metadata") else None,
+                )
+                _save_evidence(lead,normalized.get("evidence",[]))
+                created+=1
+        except IntegrityError:
+            # The normalized URL unique constraint is the final guard for concurrent runs.
+            if Lead.objects.filter(normalized_url=locals().get("nu", "")).exists():
+                duplicates+=1
+            else:
+                invalid+=1
+                _record_invalid(index,item,"Database uniqueness conflict.")
+        except Exception as exc:
+            invalid+=1
+            _record_invalid(index,item,str(exc))
     return created,duplicates,invalid
+
+
+def _record_invalid(index,item,reason):
+    ActivityLog.objects.create(event_type="discovery.record_rejected",message="A discovery record failed validation and was skipped.",metadata={"index":index,"source_url":str(item.get("source_url", ""))[:1000] if isinstance(item,dict) else "","reason":reason[:500]})
+
+
+def _save_evidence(lead,evidence):
+    supported={(row["field"],row["value"].casefold()) for row in evidence}
+    for row in evidence:
+        field_name,value=row["field"],row["value"]
+        fingerprint=hashlib.sha256("\0".join((field_name,value,row["source_url"])).encode()).hexdigest()
+        LeadEvidence.objects.get_or_create(
+            lead=lead,evidence_hash=fingerprint,
+            defaults={"field_name":field_name,"value":value,"source_url":row["source_url"],"excerpt":row["excerpt"],"origin":"extracted","validation_status":"valid" if field_name in {"source_url","action_url","company_website","contact_info.profile_url","contact_info.email"} else "pending","source_supported":True},
+        )
+    claims={
+        "title":lead.title,"company":lead.company,"company_website":lead.company_website,
+        "description":lead.description,"company_description":lead.company_description,
+        "location":lead.location,"hiring_signal":lead.hiring_signal,"budget_text":lead.budget_text,
+        "source_url":lead.source_url,"action_url":lead.action_url,
+        "posted_at":lead.posted_at.isoformat() if lead.posted_at else "",
+        "expires_at":lead.expires_at.isoformat() if lead.expires_at else "",
+    }
+    claims.update({f"contact_info.{key}":value for key,value in (lead.contact_info or {}).items() if value})
+    claims.update({f"technologies.{index}":value for index,value in enumerate(lead.technologies or [])})
+    for field_name,value in claims.items():
+        if not value: continue
+        value=str(value)
+        is_supported=(field_name,value.casefold()) in supported
+        source_row=next((row for row in evidence if row["field"]==field_name and row["value"].casefold()==value.casefold()),None)
+        source_url=source_row["source_url"] if source_row else ""
+        excerpt=source_row["excerpt"] if source_row else ""
+        origin="extracted" if is_supported else "ai_inferred"
+        validation_status="valid" if field_name in {"source_url","action_url","company_website","contact_info.profile_url","contact_info.email"} else "pending"
+        fingerprint=hashlib.sha256("\0".join((field_name,value,source_url)).encode()).hexdigest()
+        LeadEvidence.objects.get_or_create(
+            lead=lead,evidence_hash=fingerprint,
+            defaults={"field_name":field_name,"value":value,"source_url":source_url,"excerpt":excerpt,"origin":origin,"validation_status":validation_status,"source_supported":is_supported},
+        )
 
 def _fresh_qualified_inventory():
     now=timezone.now(); cutoff=now-timezone.timedelta(hours=settings.DISCOVERY_FRESHNESS_HOURS)
-    return Lead.objects.filter(status="qualified").filter(models.Q(last_verified_at__gte=cutoff)|models.Q(last_verified_at__isnull=True,updated_at__gte=cutoff)).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).count()
+    return Lead.objects.filter(status="qualified",last_verified_at__gte=cutoff).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).count()
 
 def _daily_search_count():
     return ActivityLog.objects.filter(event_type="discovery.search",created_at__date=timezone.localdate()).count()
@@ -112,6 +196,7 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
     if cache_fresh or reused_cache:
         source_cache=cache if cache_fresh else reused_cache
         items=list(source_cache.result_payload or [])
+        result={"source":source,"model":"cached","leads":items,"search_findings":source_cache.search_findings or ""}
         if not items and cache_fresh:
             payload=_payload(query,profile_id,source=source,cached=True,skip_reason="fresh query cache",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.cache_hit",message="Discovery query served from freshness cache; no web search performed.",metadata=payload); return payload
         payload=_payload(query,profile_id,source=source,cached=True,reused=bool(reused_cache),skip_reason="semantic result reuse" if reused_cache else "fresh query cache",strategy_id=strategy_id)
@@ -119,22 +204,28 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
     elif source=="live":
         inventory=_fresh_qualified_inventory()
         if _daily_search_count()>=daily_search_limit(inventory):
-            payload=_payload(query,profile_id,cached=True,skip_reason="dynamic daily web-search budget exhausted",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.skipped",message="Discovery search skipped: dynamic daily web-search budget exhausted.",metadata=payload); return payload
-        if inventory>=settings.DISCOVERY_TARGET_QUALIFIED_LEADS:
-            payload=_payload(query,profile_id,cached=True,skip_reason="fresh qualified lead inventory is already healthy",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.skipped",message="Discovery search skipped: fresh qualified lead inventory is already healthy.",metadata=payload); return payload
-        if not preferred_search_window_open():
-            payload=_payload(query,profile_id,cached=True,skip_reason="outside preferred discovery window",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.skipped",message="Discovery search deferred outside the preferred search window.",metadata=payload); return payload
-        ActivityLog.objects.create(event_type="discovery.search",message="Live discovery web search started.",metadata={"profile_id":profile_id,"strategy_id":strategy_id,"query":query,"query_variant":(selected or {}).get("query_variant","base"),"context_size":(selected or {}).get("context_size",settings.DISCOVERY_SEARCH_CONTEXT_SIZE)})
-        result=DiscoveryService().discover(query,source,context_size=(selected or {}).get("context_size"),domain_exclusions=(selected or {}).get("domain_exclusions") or domain_exclusions())
-        items=result.get("leads",[])
+            result={"source":source,"model":"cached","leads":[]}; items=[]; skipped_reason="dynamic daily web-search budget exhausted"
+            ActivityLog.objects.create(event_type="discovery.skipped",message="Discovery search skipped: dynamic daily web-search budget exhausted.",metadata=_payload(query,profile_id,cached=True,skip_reason=skipped_reason,strategy_id=strategy_id))
+        elif inventory>=settings.DISCOVERY_TARGET_QUALIFIED_LEADS:
+            result={"source":source,"model":"cached","leads":[]}; items=[]; skipped_reason="fresh qualified lead inventory is already healthy"
+            ActivityLog.objects.create(event_type="discovery.skipped",message="Discovery search skipped: fresh qualified lead inventory is already healthy.",metadata=_payload(query,profile_id,cached=True,skip_reason=skipped_reason,strategy_id=strategy_id))
+        elif not preferred_search_window_open():
+            result={"source":source,"model":"cached","leads":[]}; items=[]; skipped_reason="outside preferred discovery window"
+            ActivityLog.objects.create(event_type="discovery.skipped",message="Discovery search deferred outside the preferred search window.",metadata=_payload(query,profile_id,cached=True,skip_reason=skipped_reason,strategy_id=strategy_id))
+        else:
+            skipped_reason=None
+            ActivityLog.objects.create(event_type="discovery.search",message="Live discovery web search started.",metadata={"profile_id":profile_id,"strategy_id":strategy_id,"query":query,"query_variant":(selected or {}).get("query_variant","base"),"context_size":(selected or {}).get("context_size",settings.DISCOVERY_SEARCH_CONTEXT_SIZE)})
+            result=DiscoveryService().discover(query,source,context_size=(selected or {}).get("context_size"),domain_exclusions=(selected or {}).get("domain_exclusions") or domain_exclusions())
+            items=result.get("leads",[])
     else:
         result=DiscoveryService().discover(query,source); items=result.get("leads",[])
 
-    raw_results=len(items); valid_results=sum(1 for item in items if item.get("title") and item.get("description") and item.get("source_url"))
+    raw_results=len(items); valid_results=sum(1 for item in items if isinstance(item,dict) and item.get("title") and item.get("description") and item.get("source_url"))
     ranked=[]; seen=set()
     for item in items:
-        if not item.get("title") or not item.get("description") or not item.get("source_url"): continue
+        if not isinstance(item,dict) or not item.get("title") or not item.get("description") or not item.get("source_url"): continue
         key=_normalize_url(item["source_url"])
+        if not key: continue
         if key in seen: continue
         seen.add(key); score=_preview_score(item)
         if score["service_hits"] and score["url_ok"]: ranked.append((score["score"],item))
@@ -144,26 +235,30 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
         crawl_candidates=[item for score,item in ranked if score>=settings.CRAWLER_MIN_LEAD_SCORE][:settings.CRAWLER_MAX_LEADS_PER_CYCLE]; crawled_candidates=len(crawl_candidates)
         if crawl_candidates:
             from .discovery.public_crawler import enrich_leads
-            enriched=enrich_leads(crawl_candidates,max_leads=len(crawl_candidates)); enriched_by_url={_normalize_url(item["source_url"]):item for item in enriched}; items=[enriched_by_url.get(_normalize_url(item.get("source_url","")),item) for item in items]
-    created,duplicates,invalid=_store(items,profile_id=profile_id,strategy_id=strategy_id,query=query)
-    domains=_update_domain_stats(items,actual_search=bool(source=="live" and not (cache_fresh or reused_cache)))
-    cache_defaults={"query":query,"searched_at":timezone.now(),"result_count":len(items),"query_family":query_family(profile_id,strategy_id),"query_signature":query_signature(query),"result_payload":items[:settings.DISCOVERY_MAX_RESULTS],"source_domains":domains}
-    DiscoveryQueryCache.objects.update_or_create(profile_id=profile_id,normalized_query=normalized,defaults=cache_defaults)
+            enriched=enrich_leads(crawl_candidates,max_leads=len(crawl_candidates)); enriched_by_url={_normalize_url(item["source_url"]):item for item in enriched if _normalize_url(item.get("source_url",""))}; items=[enriched_by_url.get(_normalize_url(item.get("source_url","")),item) for item in items]
+    actual_search=bool(source=="live" and not (cache_fresh or reused_cache) and not (locals().get("skipped_reason")))
+    created,duplicates,invalid=_store(items,profile_id=profile_id,strategy_id=strategy_id,query=query,search_findings=result.get("search_findings","") if "result" in locals() else "",source_checked=actual_search)
+    domains=_update_domain_stats(items,actual_search=actual_search)
+    if not locals().get("skipped_reason") and not (cache_fresh and not items):
+        cache_defaults={"query":query,"searched_at":timezone.now(),"result_count":len(items),"query_family":query_family(profile_id,strategy_id),"query_signature":query_signature(query),"result_payload":items[:settings.DISCOVERY_MAX_RESULTS],"search_findings":result.get("search_findings", ""),"source_domains":domains}
+        DiscoveryQueryCache.objects.update_or_create(profile_id=profile_id,normalized_query=normalized,defaults=cache_defaults)
     limit=min(qualification_limit or settings.DISCOVERY_MAX_RESULTS,settings.AI_QUALIFICATION_MAX_LEADS_PER_CYCLE); now=timezone.now()
-    candidates=list(Lead.objects.filter(status="new",analysis__isnull=True,discovered_at__gte=cycle_started).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).order_by("-discovered_at","-created_at")[:limit])
+    candidates=list(Lead.objects.filter(status="new",analysis__isnull=True).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).order_by("-discovered_at","-created_at")[:limit])
     analyzed=qualified=locally_filtered=0; ai_input_tokens=ai_output_tokens=0
     for lead in candidates:
-        local=local_lead_score(lead)
-        if not should_ai_qualify(lead): data=ai_skip_analysis(lead,local); locally_filtered+=1
-        else:
-            data=analyze_lead(lead); ai_input_tokens+=int(data.get("input_tokens",0) or 0); ai_output_tokens+=int(data.get("output_tokens",0) or 0)
-        analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data); analyzed+=1
-        if analysis.relevant and analysis.match_score>=settings.QUALIFICATION_MIN_SCORE:
-            lead.status="qualified"; lead.save(update_fields=["status","updated_at"]); qualified+=1
-            ActivityLog.objects.create(lead=lead,event_type="lead.auto_qualified",message=f"Lead auto-qualified with score {analysis.match_score}.",metadata={"model":analysis.model,"match_score":analysis.match_score,"threshold":settings.QUALIFICATION_MIN_SCORE})
+        try:
+            local=local_lead_score(lead)
+            if not should_ai_qualify(lead): data=ai_skip_analysis(lead,local); locally_filtered+=1
+            else:
+                data=analyze_lead(lead); ai_input_tokens+=int(data.get("input_tokens",0) or 0); ai_output_tokens+=int(data.get("output_tokens",0) or 0)
+            analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data); analyzed+=1
+            if analysis.relevant and analysis.match_score>=settings.QUALIFICATION_MIN_SCORE:
+                lead.status="qualified"; lead.save(update_fields=["status","updated_at"]); qualified+=1
+                ActivityLog.objects.create(lead=lead,event_type="lead.auto_qualified",message=f"Lead auto-qualified with score {analysis.match_score}.",metadata={"model":analysis.model,"match_score":analysis.match_score,"threshold":settings.QUALIFICATION_MIN_SCORE})
+        except Exception as exc:
+            ActivityLog.objects.create(lead=lead,event_type="lead.qualification_failed",message="Lead qualification failed; the lead remains available for retry.",metadata={"error_type":type(exc).__name__,"reason":str(exc)[:500]})
     _refresh_domain_outcomes(items)
-    actual_search=bool(source=="live" and not (cache_fresh or reused_cache))
-    payload=_payload(query,profile_id,source=result.get("source",source) if 'result' in locals() else source,model=result.get("model","unknown") if 'result' in locals() else "cached",cached=not actual_search,searched=actual_search,reused=bool(reused_cache),discovered=len(items),created=created,duplicates=duplicates,invalid=invalid,analyzed=analyzed,qualified=qualified,locally_filtered=locally_filtered,ai_calls=analyzed-locally_filtered,ai_input_tokens=ai_input_tokens,ai_output_tokens=ai_output_tokens,raw_results=raw_results,valid_results=valid_results,unique_results=len(seen),scored_candidates=len(ranked),crawled_candidates=crawled_candidates,strategy_id=strategy_id,query_variant=(selected or {}).get("query_variant","base"),context_size=(selected or {}).get("context_size",settings.DISCOVERY_SEARCH_CONTEXT_SIZE))
+    payload=_payload(query,profile_id,source=result.get("source",source),model=result.get("model","unknown"),cached=not actual_search,searched=actual_search,reused=bool(reused_cache),skip_reason=locals().get("skipped_reason"),discovered=len(items),created=created,duplicates=duplicates,invalid=invalid,analyzed=analyzed,qualified=qualified,locally_filtered=locally_filtered,ai_calls=analyzed-locally_filtered,ai_input_tokens=ai_input_tokens,ai_output_tokens=ai_output_tokens,raw_results=raw_results,valid_results=valid_results,unique_results=len(seen),scored_candidates=len(ranked),crawled_candidates=crawled_candidates,strategy_id=strategy_id,query_variant=(selected or {}).get("query_variant","base"),context_size=(selected or {}).get("context_size",settings.DISCOVERY_SEARCH_CONTEXT_SIZE))
     if actual_search:
         _write_search_stat(profile_id,strategy_id,query,result.get("source","web_search"),query_family=query_family(profile_id,strategy_id),query_variant=(selected or {}).get("query_variant","base"),source_domains=domains,context_size=(selected or {}).get("context_size",settings.DISCOVERY_SEARCH_CONTEXT_SIZE),raw_results=raw_results,valid_results=valid_results,unique_results=len(seen),scored_candidates=len(ranked),crawled_candidates=crawled_candidates,newly_created_leads=created,duplicates=duplicates,locally_filtered=locally_filtered,ai_calls=analyzed-locally_filtered,analyzed=analyzed,qualified=qualified)
     ActivityLog.objects.create(event_type="ai.usage",message="Discovery AI usage recorded.",metadata={"operation":"qualification","model":result.get("model","unknown") if 'result' in locals() else "cached","ai_calls":analyzed-locally_filtered,"input_tokens":ai_input_tokens,"output_tokens":ai_output_tokens})

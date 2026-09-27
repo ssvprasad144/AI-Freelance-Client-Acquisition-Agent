@@ -99,7 +99,7 @@ class SearchBudgetOptimizationTests(APITestBase):
     @patch("leads.discovery_cycle.DiscoveryService.discover")
     def test_healthy_inventory_skips_live_search(self,discover):
         from leads.discovery_cycle import run_discovery_cycle
-        for i in range(10): Lead.objects.create(title=f"Qualified {i}",description="Django project",source_url=f"https://example.com/{i}",status="qualified")
+        for i in range(10): Lead.objects.create(title=f"Qualified {i}",description="Django project",source_url=f"https://example.com/{i}",status="qualified",last_verified_at=timezone.now())
         with patch("leads.discovery_cycle.settings.DISCOVERY_TARGET_QUALIFIED_LEADS",10): result=run_discovery_cycle(query="Django freelance",profile_id="inventory-test")
         self.assertEqual(discover.call_count,0); self.assertFalse(result["searched"])
 

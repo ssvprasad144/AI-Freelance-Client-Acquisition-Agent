@@ -1,8 +1,7 @@
-from urllib.parse import urlsplit, urlunsplit
 import re
 from django.conf import settings
 from django.contrib.auth import authenticate
-from django.db import models, transaction
+from django.db import models
 from django.http import JsonResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -16,7 +15,7 @@ from .discovery.live_provider import LiveDiscoveryError
 from .discovery.mock_provider import DiscoveryError
 from .discovery.service import DiscoveryService
 from .discovery.profiles import public_profiles, strategy_performance
-from .discovery_cycle import run_discovery_cycle
+from .discovery_cycle import run_discovery_cycle, _store as store_discovered_leads
 from .lead_optimizer import local_lead_score, should_ai_qualify, ai_skip_analysis
 from .followup_service import process_due_followups as process_due_followups_service
 from .followup_intelligence import create_sequence, cancel_if_stopped
@@ -37,11 +36,6 @@ from .pagination import StandardPagination
 from .serializers import ActivityLogSerializer, FollowUpSerializer, FollowUpSequenceSerializer, LeadSerializer, ReplySerializer, OutreachSerializer, ProposalSerializer, ClientSerializer, ContactSerializer, ConversationSerializer, MeetingSerializer, AcquisitionEventSerializer, LearningStatSerializer, ClientIntelligenceSerializer, AcquisitionOpportunitySerializer, OutreachPlanSerializer, RevenueRecordSerializer
 
 def _normalize_title(value): return re.sub(r"\s+"," ",re.sub(r"[^a-z0-9 ]"," ",str(value).lower())).strip()
-def _normalize_url(value):
-    try:
-        parts=urlsplit(str(value).strip()); return urlunsplit(("",parts.netloc.lower().removeprefix("www."),parts.path.rstrip("/"),"",""))
-    except Exception: return str(value).strip().lower().rstrip("/")
-
 def _paginate(request,qs,serializer):
     paginator=StandardPagination(); page=paginator.paginate_queryset(qs,request)
     return paginator.get_paginated_response(serializer(page,many=True).data)
@@ -84,32 +78,32 @@ def _proposal_delivery(lead):
     return {"medium": destination.medium, "action_type": destination.action_type, "action_url": destination.url}
 
 def _store(items):
-    created=duplicates=invalid=0
-    with transaction.atomic():
-        for item in items:
-            if not item.get("title") or not item.get("description") or not item.get("source_url"): invalid+=1; continue
-            url=item["source_url"]; nt=_normalize_title(item.get("title","")); nu=_normalize_url(url); company=item.get("company","")
-            if Lead.objects.filter(normalized_url=nu).exists() or Lead.objects.filter(normalized_title=nt,company__iexact=company).exists(): duplicates+=1; continue
-            Lead.objects.create(title=item["title"],normalized_title=nt,normalized_url=nu,company=company,description=item["description"],source=item.get("source") or "web_search",source_url=url,action_url=item.get("action_url") or url,lead_type=item.get("lead_type","freelance"),budget_text=item.get("budget_text",""),technologies=item.get("technologies") or [],contact_info=item.get("contact_info") or {},discovered_at=timezone.now(),posted_at=item.get("posted_at") or None,expires_at=item.get("expires_at") or None,last_verified_at=timezone.now()); created+=1
-    return created,duplicates,invalid
+    # Keep the compatibility helper; all writes use the same canonical validation path.
+    return store_discovered_leads(items, source_checked=False)
 
 @api_view(["POST"])
 @throttle_classes([AIThrottle])
 def qualify_new_leads(request):
-    limit=min(max(int(request.data.get("limit",20)),1),50)
+    try: limit=min(max(int(request.data.get("limit",20)),1),50)
+    except (TypeError,ValueError): return Response({"detail":"limit must be an integer."},status=400)
     now=timezone.now()
     leads=list(Lead.objects.filter(status="new",analysis__isnull=True).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).order_by("-discovered_at","-created_at")[:limit]); qualified=0; locally_filtered=0
+    failed=analyzed=0
     for lead in leads:
-        local=local_lead_score(lead)
-        if not should_ai_qualify(lead):
-            data=ai_skip_analysis(lead,local); locally_filtered+=1
-        else:
-            data=analyze_lead(lead)
-        analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data)
-        if analysis.relevant and analysis.match_score>=settings.QUALIFICATION_MIN_SCORE:
-            lead.status="qualified"; lead.save(update_fields=["status","updated_at"]); qualified+=1
-            ActivityLog.objects.create(lead=lead,event_type="lead.auto_qualified",message=f"Lead auto-qualified with score {analysis.match_score}.",metadata={"model":analysis.model,"match_score":analysis.match_score,"threshold":settings.QUALIFICATION_MIN_SCORE})
-    return Response({"status":"success","analyzed":len(leads),"qualified":qualified,"locally_filtered":locally_filtered,"ai_calls":len(leads)-locally_filtered,"threshold":settings.QUALIFICATION_MIN_SCORE,"remaining_new":Lead.objects.filter(status="new").count()})
+        try:
+            local=local_lead_score(lead)
+            if not should_ai_qualify(lead):
+                data=ai_skip_analysis(lead,local); locally_filtered+=1
+            else:
+                data=analyze_lead(lead)
+            analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data); analyzed+=1
+            if analysis.relevant and analysis.match_score>=settings.QUALIFICATION_MIN_SCORE:
+                lead.status="qualified"; lead.save(update_fields=["status","updated_at"]); qualified+=1
+                ActivityLog.objects.create(lead=lead,event_type="lead.auto_qualified",message=f"Lead auto-qualified with score {analysis.match_score}.",metadata={"model":analysis.model,"match_score":analysis.match_score,"threshold":settings.QUALIFICATION_MIN_SCORE})
+        except Exception as exc:
+            failed+=1
+            ActivityLog.objects.create(lead=lead,event_type="lead.qualification_failed",message="Lead qualification failed; the lead remains available for retry.",metadata={"error_type":type(exc).__name__,"reason":str(exc)[:500]})
+    return Response({"status":"success","analyzed":analyzed,"failed":failed,"qualified":qualified,"locally_filtered":locally_filtered,"ai_calls":max(0,analyzed-locally_filtered),"threshold":settings.QUALIFICATION_MIN_SCORE,"remaining_new":Lead.objects.filter(status="new").count()})
 
 @api_view(["GET"])
 def followups(request): return _paginate(request,FollowUp.objects.filter(status__in=["draft","approved"]).select_related("lead").order_by("scheduled_at"),FollowUpSerializer)
@@ -149,7 +143,10 @@ def approve_followup(request,pk):
 def run_discovery(request):
     query=str(request.data.get("query") or settings.DEFAULT_DISCOVERY_QUERY).strip()
     source=str(request.data.get("source") or "live").lower()
-    limit=min(max(int(request.data.get("limit",settings.DISCOVERY_MAX_RESULTS)),1),settings.DISCOVERY_MAX_RESULTS)
+    try: limit=min(max(int(request.data.get("limit",settings.DISCOVERY_MAX_RESULTS)),1),settings.DISCOVERY_MAX_RESULTS)
+    except (TypeError,ValueError): return Response({"detail":"limit must be an integer."},status=400)
+    if not query or len(query)>1000: return Response({"detail":"query must contain 1 to 1000 characters."},status=400)
+    if source not in {"live","mock"}: return Response({"detail":"source must be live or mock."},status=400)
     try:
         payload=run_discovery_cycle(query=query,source=source,qualification_limit=limit,profile_id="manual")
     except (LiveDiscoveryError,DiscoveryError) as exc:

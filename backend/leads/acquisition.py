@@ -4,6 +4,7 @@ from email.message import EmailMessage
 from django.conf import settings
 from django.utils import timezone
 from openai import OpenAI
+from .data_quality import validate_discovered_email
 from .knowledge import PROFILE
 from .models import ActivityLog, Lead, Outreach, Reply
 from .followup_intelligence import cancel_if_stopped, schedule_next_step
@@ -63,9 +64,14 @@ def send_email(outreach):
     if outreach.status!="approved":
         raise ValueError("Only approved outreach can be sent.")
     lead=outreach.lead
-    recipient=(lead.contact_info or {}).get("email")
+    try:
+        recipient=validate_discovered_email((lead.contact_info or {}).get("email"))
+    except ValueError:
+        recipient=None
     if not recipient:
-        raise ValueError("Lead has no verified email contact.")
+        raise ValueError("Lead has no valid-format email contact.")
+    if not lead.evidence.filter(field_name="contact_info.email",value__iexact=recipient,source_supported=True).exists():
+        raise ValueError("Email syntax is valid, but no supporting source evidence is recorded.")
     if not getattr(settings,"OUTREACH_ENABLED",False):
         raise ValueError("Outbound sending is disabled. Enable it explicitly after configuring email.")
     message=EmailMessage()
@@ -88,9 +94,14 @@ def send_followup(followup):
         raise ValueError("Only due follow-ups can be sent.")
     if followup.medium != "email":
         raise ValueError(f"Manual follow-up required: open {followup.destination_url or 'the source destination'} and submit the approved draft there.")
-    recipient=(followup.lead.contact_info or {}).get("email")
+    try:
+        recipient=validate_discovered_email((followup.lead.contact_info or {}).get("email"))
+    except ValueError:
+        recipient=None
     if not recipient:
-        raise ValueError("Lead has no verified email contact.")
+        raise ValueError("Lead has no valid-format email contact.")
+    if not followup.lead.evidence.filter(field_name="contact_info.email",value__iexact=recipient,source_supported=True).exists():
+        raise ValueError("Email syntax is valid, but no supporting source evidence is recorded.")
     if not getattr(settings,"OUTREACH_ENABLED",False):
         raise ValueError("Outbound sending is disabled. Enable it explicitly after configuring email.")
     message=EmailMessage()
