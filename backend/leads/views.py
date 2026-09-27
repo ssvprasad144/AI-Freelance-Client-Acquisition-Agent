@@ -241,15 +241,15 @@ class LeadViewSet(viewsets.ModelViewSet):
 
 @api_view(["GET"])
 def proposal_workspace(request, pk):
-    try: proposal=Proposal.objects.filter(lead__owner=request.user).prefetch_related("versions").filter(pk=pk).first()
-    except Proposal.DoesNotExist: return Response({"detail":"Proposal not found."},status=404)
+    proposal=Proposal.objects.filter(lead__owner=request.user).prefetch_related("versions").filter(pk=pk).first()
+    if not proposal: return Response({"detail":"Proposal not found."},status=404)
     version=current_version(proposal)
     return Response({**ProposalSerializer(proposal).data,"current_content":version.content if version else ""})
 
 @api_view(["PUT"])
 def edit_proposal(request, pk):
-    try: proposal=Proposal.objects.filter(lead__owner=request.user,pk=pk).first()
-    except Proposal.DoesNotExist: return Response({"detail":"Proposal not found."},status=404)
+    proposal=Proposal.objects.filter(lead__owner=request.user,pk=pk).first()
+    if not proposal: return Response({"detail":"Proposal not found."},status=404)
     content=str(request.data.get("content") or "").strip()
     if not content: return Response({"detail":"content is required."},status=400)
     number=proposal.versions.order_by("-version_number").values_list("version_number",flat=True).first() or 0
@@ -300,8 +300,8 @@ def followup_sequences(request):
 
 @api_view(["POST"])
 def cancel_followup_sequence(request, pk):
-    try: sequence=FollowUpSequence.objects.filter(lead__owner=request.user,pk=pk).first()
-    except FollowUpSequence.DoesNotExist: return Response({"detail":"Sequence not found."},status=404)
+    sequence=FollowUpSequence.objects.filter(lead__owner=request.user,pk=pk).first()
+    if not sequence: return Response({"detail":"Sequence not found."},status=404)
     sequence.status="cancelled"; sequence.save(update_fields=["status","updated_at"])
     FollowUp.objects.filter(sequence=sequence,status__in=["draft","approved","due"]).update(status="cancelled")
     return Response(FollowUpSequenceSerializer(sequence).data)
@@ -316,8 +316,8 @@ def analytics(request):
 
 @api_view(["POST"])
 def send_followup(request,pk):
-    try: followup=FollowUp.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
-    except FollowUp.DoesNotExist: return Response({"detail":"Follow-up not found."},status=404)
+    followup=FollowUp.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
+    if not followup: return Response({"detail":"Follow-up not found."},status=404)
     claimed=FollowUp.objects.filter(pk=pk,status="due").update(status="sending")
     if not claimed:
         return Response({"detail":"Follow-up is not due or is already being/sent."},status=409)
@@ -335,8 +335,8 @@ def send_followup(request,pk):
 
 @api_view(["POST"])
 def send_outreach(request,pk):
-    try: outreach=Outreach.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
-    except Outreach.DoesNotExist: return Response({"detail":"Outreach not found."},status=404)
+    outreach=Outreach.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
+    if not outreach: return Response({"detail":"Outreach not found."},status=404)
     claimed=Outreach.objects.filter(pk=pk,status="approved").update(status="sending")
     if not claimed:
         return Response({"detail":"Outreach is not actionable or has already been sent."},status=409)
@@ -375,8 +375,8 @@ def outreach_ready(request):
 
 @api_view(["POST"])
 def open_outreach(request,pk):
-    try: item=Outreach.objects.filter(lead__owner=request.user,pk=pk).first()
-    except Outreach.DoesNotExist: return Response({"detail":"Outreach not found."},status=404)
+    item=Outreach.objects.filter(lead__owner=request.user,pk=pk).first()
+    if not item: return Response({"detail":"Outreach not found."},status=404)
     if item.status=="draft": item.status="opened"
     item.opened_at=item.opened_at or timezone.now()
     item.save(update_fields=["status","opened_at"])
@@ -405,7 +405,7 @@ def mark_outreach_submitted(request,pk):
 @api_view(["GET"])
 def dashboard(request):
     now=timezone.now(); active=_owned_leads(request).exclude(status="archived").filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)); last=ActivityLog.objects.filter(event_type="discovery.completed").order_by("-created_at").first()
-    return JsonResponse({"opportunities":active.count(),"qualified":_owned_leads(request).filter(status="qualified").count(),"proposals":_owned_leads(request).filter(status="proposal").count(),"replies":_owned_leads(request).filter(status="replied").count(),"high_match":LeadAnalysis.objects.filter(lead__owner=request.user,match_score__gte=80).count(),"followups_pending":FollowUp.objects.filter(status="draft").count(),"followups_upcoming":FollowUp.objects.filter(status="approved",scheduled_at__gt=now).count(),"followups_due":FollowUp.objects.filter(status="due").count(),"last_discovery_at":last.created_at if last else None,"last_discovery":last.metadata if last else None})
+    return JsonResponse({"opportunities":active.count(),"qualified":_owned_leads(request).filter(status="qualified").count(),"proposals":_owned_leads(request).filter(status="proposal").count(),"replies":_owned_leads(request).filter(status="replied").count(),"high_match":LeadAnalysis.objects.filter(lead__owner=request.user,match_score__gte=80).count(),"followups_pending":FollowUp.objects.filter(lead__owner=request.user,status="draft").count(),"followups_upcoming":FollowUp.objects.filter(lead__owner=request.user,status="approved",scheduled_at__gt=now).count(),"followups_due":FollowUp.objects.filter(lead__owner=request.user,status="due").count(),"last_discovery_at":last.created_at if last else None,"last_discovery":last.metadata if last else None})
 
 @api_view(["GET"])
 def activity(request):return _paginate(request,ActivityLog.objects.all(),ActivityLogSerializer)
@@ -432,8 +432,8 @@ def client_detail(request,pk):
 @api_view(["POST"])
 @throttle_classes([AIThrottle])
 def client_intelligence(request,pk):
-    try: client=_owned_clients(request).filter(pk=pk).first()
-    except Client.DoesNotExist: return Response({"detail":"Client not found."},status=404)
+    client=_owned_clients(request).filter(pk=pk).first()
+    if not client: return Response({"detail":"Client not found."},status=404)
     intelligence=generate_client_intelligence(client)
     return Response({"client":ClientSerializer(client).data,"intelligence":ClientIntelligenceSerializer(intelligence).data})
 
@@ -456,8 +456,8 @@ def create_meeting(request):
     if status_value not in {x[0] for x in Meeting.STATUS}: return Response({"detail":"Invalid meeting status."},status=400)
     contact_id=request.data.get("contact_id")
     if contact_id:
-        try: contact=Contact.objects.filter(client__owner=request.user,pk=contact_id).first()
-        except Contact.DoesNotExist: return Response({"detail":"Contact not found."},status=404)
+        contact=Contact.objects.filter(client__owner=request.user,pk=contact_id).first()
+        if not contact: return Response({"detail":"Contact not found."},status=404)
         if client and contact.client_id!=client.id: return Response({"detail":"Contact does not belong to this client."},status=400)
     meeting=Meeting.objects.create(lead=lead,client=client,contact_id=contact_id,status="requested",scheduled_at=request.data.get("scheduled_at"),meeting_url=str(request.data.get("meeting_url") or ""),notes=str(request.data.get("notes") or ""),outcome=str(request.data.get("outcome") or ""),next_action=str(request.data.get("next_action") or ""))
     sync_meeting_context(meeting); apply_meeting_status(meeting,status_value)
@@ -465,8 +465,8 @@ def create_meeting(request):
 
 @api_view(["PATCH","PUT"])
 def update_meeting(request,pk):
-    try: meeting=Meeting.objects.filter(models.Q(lead__owner=request.user)|models.Q(client__owner=request.user),pk=pk).first()
-    except Meeting.DoesNotExist: return Response({"detail":"Meeting not found."},status=404)
+    meeting=Meeting.objects.filter(models.Q(lead__owner=request.user)|models.Q(client__owner=request.user),pk=pk).first()
+    if not meeting: return Response({"detail":"Meeting not found."},status=404)
     allowed=["status","scheduled_at","meeting_url","notes","outcome","next_action","completed_at"]
     if "status" in request.data and str(request.data["status"]) not in {x[0] for x in Meeting.STATUS}: return Response({"detail":"Invalid meeting status."},status=400)
     requested_status=meeting.status
@@ -503,8 +503,8 @@ def acquisition_next_actions(request):
 
 @api_view(["POST"])
 def acquisition_action(request,pk):
-    try: obj=AcquisitionOpportunity.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
-    except AcquisitionOpportunity.DoesNotExist:return Response({"detail":"Opportunity not found."},status=404)
+    obj=AcquisitionOpportunity.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
+    if not obj:return Response({"detail":"Opportunity not found."},status=404)
     action=str(request.data.get("action") or obj.recommended_action); mode=str(request.data.get("mode") or "approval_required"); approved=bool(request.data.get("approved",False))
     try:return Response(execute_action(obj,action,mode=mode,approved=approved))
     except ValueError as exc:return Response({"detail":str(exc),"executed":False},status=400)
@@ -527,8 +527,8 @@ def outreach_plan(request):
 
 @api_view(["POST"])
 def approve_outreach_plan(request,pk):
-    try: plan=OutreachPlan.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
-    except OutreachPlan.DoesNotExist:return Response({"detail":"Outreach plan not found."},status=404)
+    plan=OutreachPlan.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
+    if not plan:return Response({"detail":"Outreach plan not found."},status=404)
     try: return Response(OutreachPlanSerializer(mark_approved(plan)).data)
     except ValueError as exc:return Response({"detail":str(exc)},status=400)
 
