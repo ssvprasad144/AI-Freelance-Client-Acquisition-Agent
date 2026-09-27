@@ -345,6 +345,6 @@ class APILifecycleAuditTests(TestCase):
         self.assertEqual(meeting.status,"requested")
 
     def test_invalid_numeric_limit_returns_400(self):
-        response=self.client.post("/api/leads/discovery/qualify/",{"limit":"not-a-number"},format="json")
+        response=self.client.post("/api/discovery/qualify/",{"limit":"not-a-number"},format="json")
         self.assertEqual(response.status_code,400)
         self.assertIn("limit",response.data["detail"])
