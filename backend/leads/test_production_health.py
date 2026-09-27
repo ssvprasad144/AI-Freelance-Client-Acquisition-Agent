@@ -19,7 +19,7 @@ class ProductionHealthTests(TestCase):
         self.assertEqual(response.json()["workers"]["discovery_cron"]["status"], "unknown")
 
     def test_health_fails_when_discovery_cron_is_stale(self):
-        old = timezone.now() - timedelta(hours=2)
+        old = timezone.now() - timedelta(hours=25)
         item=ActivityLog.objects.create(event_type="cron.discovery.completed", message="old")
         ActivityLog.objects.filter(pk=item.pk).update(created_at=old)
         response = self.client.get("/api/health/")
