@@ -94,10 +94,12 @@ class LeadDataQualityTests(TestCase):
         self.assertEqual(validate_lead_record(row, equivalent)["evidence"][0]["source_url"], "https://www.acme.test/jobs/42")
 
         different_scheme = [{"url": "http://www.acme.test/jobs/42", "excerpt": "Apply at https://www.acme.test/jobs/42"}]
-        self.assertEqual(validate_lead_record(row, different_scheme)["evidence"], [])
+        with self.assertRaisesMessage(ValueError, "source_url is not supported"):
+            validate_lead_record(row, different_scheme)
 
         different_host = [{"url": "https://acme.test/jobs/42", "excerpt": "Apply at https://www.acme.test/jobs/42"}]
-        self.assertEqual(validate_lead_record(row, different_host)["evidence"], [])
+        with self.assertRaisesMessage(ValueError, "source_url is not supported"):
+            validate_lead_record(row, different_host)
 
     def test_partial_batch_failure_keeps_valid_record_and_logs_rejection(self):
         invalid = lead_row("file:///etc/passwd")
