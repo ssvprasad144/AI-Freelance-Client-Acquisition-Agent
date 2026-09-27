@@ -31,11 +31,11 @@ def _domain(value):
     try: return urlsplit(str(value)).netloc.lower().removeprefix("www.")
     except Exception: return ""
 
-def _store(items,profile_id="",strategy_id="",query="",search_findings="",source_checked=False):
+def _store(items,profile_id="",strategy_id="",query="",search_findings="",source_findings=None,source_checked=False):
     created=duplicates=invalid=0
     for index,item in enumerate(items):
         try:
-            normalized=validate_lead_record(item,search_findings)
+            normalized=validate_lead_record(item,source_findings if source_findings is not None else search_findings)
             nt=_normalize_title(normalized["title"])
             nu=normalized["source_url"]
             now=timezone.now()
@@ -196,7 +196,7 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
     if cache_fresh or reused_cache:
         source_cache=cache if cache_fresh else reused_cache
         items=list(source_cache.result_payload or [])
-        result={"source":source,"model":"cached","leads":items,"search_findings":source_cache.search_findings or ""}
+        result={"source":source,"model":"cached","leads":items,"search_findings":source_cache.search_findings or "","source_findings":source_cache.source_findings or []}
         if not items and cache_fresh:
             payload=_payload(query,profile_id,source=source,cached=True,skip_reason="fresh query cache",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.cache_hit",message="Discovery query served from freshness cache; no web search performed.",metadata=payload); return payload
         payload=_payload(query,profile_id,source=source,cached=True,reused=bool(reused_cache),skip_reason="semantic result reuse" if reused_cache else "fresh query cache",strategy_id=strategy_id)
@@ -237,10 +237,10 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
             from .discovery.public_crawler import enrich_leads
             enriched=enrich_leads(crawl_candidates,max_leads=len(crawl_candidates)); enriched_by_url={_normalize_url(item["source_url"]):item for item in enriched if _normalize_url(item.get("source_url",""))}; items=[enriched_by_url.get(_normalize_url(item.get("source_url","")),item) for item in items]
     actual_search=bool(source=="live" and not (cache_fresh or reused_cache) and not (locals().get("skipped_reason")))
-    created,duplicates,invalid=_store(items,profile_id=profile_id,strategy_id=strategy_id,query=query,search_findings=result.get("search_findings","") if "result" in locals() else "",source_checked=actual_search)
+    created,duplicates,invalid=_store(items,profile_id=profile_id,strategy_id=strategy_id,query=query,search_findings=result.get("search_findings","") if "result" in locals() else "",source_findings=result.get("source_findings") if "result" in locals() else None,source_checked=actual_search)
     domains=_update_domain_stats(items,actual_search=actual_search)
     if not locals().get("skipped_reason") and not (cache_fresh and not items):
-        cache_defaults={"query":query,"searched_at":timezone.now(),"result_count":len(items),"query_family":query_family(profile_id,strategy_id),"query_signature":query_signature(query),"result_payload":items[:settings.DISCOVERY_MAX_RESULTS],"search_findings":result.get("search_findings", ""),"source_domains":domains}
+        cache_defaults={"query":query,"searched_at":timezone.now(),"result_count":len(items),"query_family":query_family(profile_id,strategy_id),"query_signature":query_signature(query),"result_payload":items[:settings.DISCOVERY_MAX_RESULTS],"search_findings":result.get("search_findings", ""),"source_findings":result.get("source_findings", []),"source_domains":domains}
         DiscoveryQueryCache.objects.update_or_create(profile_id=profile_id,normalized_query=normalized,defaults=cache_defaults)
     limit=min(qualification_limit or settings.DISCOVERY_MAX_RESULTS,settings.AI_QUALIFICATION_MAX_LEADS_PER_CYCLE); now=timezone.now()
     candidates=list(Lead.objects.filter(status="new",analysis__isnull=True).filter(models.Q(expires_at__isnull=True)|models.Q(expires_at__gt=now)).order_by("-discovered_at","-created_at")[:limit])

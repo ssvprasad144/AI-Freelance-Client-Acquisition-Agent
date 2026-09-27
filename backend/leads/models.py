@@ -144,6 +144,7 @@ class DiscoveryQueryCache(models.Model):
     query_signature=models.CharField(max_length=64,default="",db_index=True)
     result_payload=models.JSONField(default=list,blank=True)
     search_findings=models.TextField(blank=True)
+    source_findings=models.JSONField(default=list,blank=True)
     source_domains=models.JSONField(default=list,blank=True)
     created_at=models.DateTimeField(auto_now_add=True)
     updated_at=models.DateTimeField(auto_now=True)

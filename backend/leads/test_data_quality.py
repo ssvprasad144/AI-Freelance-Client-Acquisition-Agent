@@ -1,12 +1,16 @@
 from datetime import timedelta
+import importlib
+from django.apps import apps
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
+from unittest.mock import patch
 
+from .acquisition import send_email
 from .client_service import _validated_client_intelligence, sync_lead_client
 from .data_quality import normalize_url, validate_discovered_email, validate_lead_record
 from .discovery_cycle import _fresh_qualified_inventory, _store
-from .models import ActivityLog, Client, Contact, Lead, LeadEvidence
+from .models import ActivityLog, Client, Contact, Lead, LeadEvidence, Outreach
 
 
 def lead_row(url="https://acme.test/jobs/42"):
@@ -39,7 +43,7 @@ class LeadDataQualityTests(TestCase):
                 validate_discovered_email(email)
 
     def test_evidence_requires_cited_url_literal_excerpt_and_claim(self):
-        findings = "Acme Labs seeks a Django engineer. https://acme.test/jobs/42"
+        findings = [{"url": "https://acme.test/jobs/42", "excerpt": "Acme Labs seeks a Django engineer."}]
         row = lead_row()
         row["evidence"] = [
             {"field": "company", "value": "Acme Labs", "source_url": "https://acme.test/jobs/42", "excerpt": "Acme Labs seeks a Django engineer."},
@@ -48,6 +52,52 @@ class LeadDataQualityTests(TestCase):
         ]
         cleaned = validate_lead_record(row, findings)
         self.assertEqual([e["field"] for e in cleaned["evidence"]], ["company"])
+
+    def test_evidence_from_a_different_source_url_is_rejected(self):
+        row = lead_row()
+        row["evidence"] = [{"field": "company", "value": "Acme Labs", "source_url": "https://acme.test/jobs/42", "excerpt": "Acme Labs seeks a Django engineer."}]
+        findings = [{"url": "https://other.test/jobs/9", "excerpt": "Acme Labs seeks a Django engineer."}]
+        with self.assertRaisesMessage(ValueError, "source_url is not supported"):
+            validate_lead_record(row, findings)
+
+    def test_combined_or_missing_findings_can_never_support_evidence(self):
+        row = lead_row()
+        row["evidence"] = [{"field": "company", "value": "Acme Labs", "source_url": "https://acme.test/jobs/42", "excerpt": "Acme Labs seeks a Django engineer."}]
+        self.assertEqual(validate_lead_record(row, "Acme Labs seeks a Django engineer. https://acme.test/jobs/42")["evidence"], [])
+        with self.assertRaisesMessage(ValueError, "source_url is not supported"):
+            validate_lead_record(row, [])
+        with self.assertRaisesMessage(ValueError, "source_url is not supported"):
+            validate_lead_record(row, [{"url": "not a URL", "excerpt": "Acme Labs seeks a Django engineer."}])
+
+    def test_empty_evidence_source_url_can_never_support_evidence(self):
+        row = lead_row()
+        row["evidence"] = [{"field": "company", "value": "Acme Labs", "source_url": "", "excerpt": "Acme Labs seeks a Django engineer."}]
+        findings = [{"url": "https://acme.test/jobs/42", "excerpt": "Acme Labs seeks a Django engineer."}]
+        self.assertEqual(validate_lead_record(row, findings)["evidence"], [])
+
+    def test_lead_source_url_must_be_a_url_bound_source_finding(self):
+        row = lead_row()
+        findings = [{"url": "https://other.test/jobs/9", "excerpt": "A Django role."}]
+        with self.assertRaisesMessage(ValueError, "source_url is not supported"):
+            validate_lead_record(row, findings)
+
+    def test_evidence_from_its_specific_source_url_is_accepted(self):
+        row = lead_row()
+        row["evidence"] = [{"field": "company", "value": "Acme Labs", "source_url": "https://acme.test/jobs/42", "excerpt": "Acme Labs seeks a Django engineer."}]
+        findings = [{"url": "https://acme.test/jobs/42", "excerpt": "Acme Labs seeks a Django engineer."}]
+        self.assertEqual(validate_lead_record(row, findings)["evidence"][0]["source_url"], "https://acme.test/jobs/42")
+
+    def test_source_url_normalization_only_accepts_equivalent_destinations(self):
+        row = lead_row("https://www.acme.test/jobs/42/?utm_source=search#apply")
+        row["evidence"] = [{"field": "source_url", "value": "https://www.acme.test/jobs/42", "source_url": "https://www.acme.test/jobs/42/?utm_source=search#apply", "excerpt": "Apply at https://www.acme.test/jobs/42"}]
+        equivalent = [{"url": "https://www.acme.test:443/jobs/42/", "excerpt": "Apply at https://www.acme.test/jobs/42"}]
+        self.assertEqual(validate_lead_record(row, equivalent)["evidence"][0]["source_url"], "https://www.acme.test/jobs/42")
+
+        different_scheme = [{"url": "http://www.acme.test/jobs/42", "excerpt": "Apply at https://www.acme.test/jobs/42"}]
+        self.assertEqual(validate_lead_record(row, different_scheme)["evidence"], [])
+
+        different_host = [{"url": "https://acme.test/jobs/42", "excerpt": "Apply at https://www.acme.test/jobs/42"}]
+        self.assertEqual(validate_lead_record(row, different_host)["evidence"], [])
 
     def test_partial_batch_failure_keeps_valid_record_and_logs_rejection(self):
         invalid = lead_row("file:///etc/passwd")
@@ -63,13 +113,13 @@ class LeadDataQualityTests(TestCase):
             Lead.objects.create(title="Concurrent copy", normalized_url=lead.normalized_url, source_url=lead.source_url, description="Another row")
 
     def test_conflicting_source_claim_is_preserved_without_overwriting_current_lead(self):
-        findings = "Other Co seeks a Django engineer. https://acme.test/jobs/42"
+        findings = [{"url": "https://acme.test/jobs/42", "excerpt": "Other Co seeks a Django engineer."}]
         existing = lead_row()
         self.assertEqual(_store([existing], search_findings=""), (1, 0, 0))
         conflict = lead_row()
         conflict["company"] = "Other Co"
         conflict["evidence"] = [{"field": "company", "value": "Other Co", "source_url": "https://acme.test/jobs/42", "excerpt": "Other Co seeks a Django engineer."}]
-        self.assertEqual(_store([conflict], search_findings=findings, source_checked=True), (0, 1, 0))
+        self.assertEqual(_store([conflict], source_findings=findings, source_checked=True), (0, 1, 0))
         lead = Lead.objects.get()
         self.assertEqual(lead.company, "Acme Labs")
         self.assertTrue(LeadEvidence.objects.filter(lead=lead, field_name="company", value="Other Co", source_supported=True).exists())
@@ -87,8 +137,63 @@ class LeadDataQualityTests(TestCase):
 
     def test_discovery_cache_keeps_source_findings_for_later_evidence_validation(self):
         from .models import DiscoveryQueryCache
-        cache = DiscoveryQueryCache.objects.create(query="Django", normalized_query="django", search_findings="A Django role. https://acme.com/jobs/42")
+        source_findings = [{"url": "https://acme.com/jobs/42", "excerpt": "A Django role."}]
+        cache = DiscoveryQueryCache.objects.create(query="Django", normalized_query="django", search_findings="A Django role. https://acme.com/jobs/42", source_findings=source_findings)
         self.assertIn("https://acme.com/jobs/42", cache.search_findings)
+        self.assertEqual(cache.source_findings, source_findings)
+
+    @patch("leads.discovery_cycle.analyze_lead")
+    @patch("leads.discovery_cycle.DiscoveryService.discover")
+    def test_cache_replay_uses_persisted_source_findings(self, discover, analyze):
+        row = lead_row("https://acme.test/jobs/42")
+        row["evidence"] = [{"field": "company", "value": "Acme Labs", "source_url": "https://acme.test/jobs/42", "excerpt": "Acme Labs needs a Django engineer."}]
+        from .models import DiscoveryQueryCache
+        DiscoveryQueryCache.objects.create(
+            query="Django freelance",
+            normalized_query="django freelance",
+            profile_id="cache-test",
+            searched_at=timezone.now(),
+            result_payload=[row],
+            source_findings=[{"url": "https://acme.test/jobs/42", "excerpt": "Acme Labs needs a Django engineer."}],
+        )
+        from .discovery_cycle import run_discovery_cycle
+        run_discovery_cycle(query="Django freelance", profile_id="cache-test")
+        self.assertFalse(discover.called)
+        self.assertTrue(LeadEvidence.objects.filter(field_name="company", value="Acme Labs", source_supported=True).exists())
+
+    @patch("leads.discovery_cycle.analyze_lead")
+    @patch("leads.discovery_cycle.DiscoveryService.discover")
+    def test_cache_replay_cannot_use_legacy_combined_findings(self, discover, analyze):
+        row = lead_row("https://acme.test/jobs/42")
+        row["evidence"] = [{"field": "company", "value": "Acme Labs", "source_url": "https://acme.test/jobs/42", "excerpt": "Acme Labs needs a Django engineer."}]
+        from .models import DiscoveryQueryCache
+        DiscoveryQueryCache.objects.create(
+            query="Django freelance",
+            normalized_query="django freelance",
+            profile_id="legacy-cache-test",
+            searched_at=timezone.now(),
+            result_payload=[row],
+            search_findings="Acme Labs needs a Django engineer. https://acme.test/jobs/42",
+        )
+        from .discovery_cycle import run_discovery_cycle
+        run_discovery_cycle(query="Django freelance", profile_id="legacy-cache-test")
+        self.assertFalse(discover.called)
+        self.assertFalse(LeadEvidence.objects.filter(field_name="company", value="Acme Labs", source_supported=True).exists())
+
+    def test_legacy_evidence_migration_revokes_existing_support(self):
+        lead = Lead.objects.create(title="Legacy", description="Django", source_url="https://acme.test/jobs/legacy")
+        evidence = LeadEvidence.objects.create(
+            lead=lead,
+            field_name="company",
+            value="Acme Labs",
+            source_url="https://acme.test/jobs/legacy",
+            evidence_hash="legacy-evidence",
+            source_supported=True,
+        )
+        migration = importlib.import_module("leads.migrations.0023_revoke_unattributed_evidence_support")
+        migration.revoke_unattributed_evidence_support(apps, None)
+        evidence.refresh_from_db()
+        self.assertFalse(evidence.source_supported)
 
     def test_company_and_contact_identity_are_conservatively_deduplicated(self):
         row = lead_row()
@@ -127,10 +232,30 @@ class LeadDataQualityTests(TestCase):
     def test_non_source_supported_company_website_does_not_assign_client_domain(self):
         row = lead_row("https://acme.com/jobs/42")
         row["company_website"] = "https://official.acme.com"
-        self.assertEqual(_store([row]), (1, 0, 0))
+        row["evidence"] = [{"field": "company_website", "value": "https://official.acme.com", "source_url": "https://acme.com/jobs/42", "excerpt": "Acme official website: https://official.acme.com"}]
+        findings = [
+            {"url": "https://acme.com/jobs/42", "excerpt": "Django automation role."},
+            {"url": "https://other.test/jobs/9", "excerpt": "Acme official website: https://official.acme.com"},
+        ]
+        self.assertEqual(_store([row], source_findings=findings), (1, 0, 0))
         lead = Lead.objects.get(normalized_url="https://acme.com/jobs/42")
         client, _ = sync_lead_client(lead)
         self.assertEqual(client.domain, "")
+
+    def test_unsupported_contact_email_is_not_eligible_for_automated_email(self):
+        row = lead_row()
+        row["contact_info"] = {"email": "sales@acme-labs.com"}
+        row["evidence"] = [{"field": "contact_info.email", "value": "sales@acme-labs.com", "source_url": "https://acme.test/jobs/42", "excerpt": "Email sales@acme-labs.com"}]
+        findings = [
+            {"url": "https://acme.test/jobs/42", "excerpt": "Django automation role."},
+            {"url": "https://other.test/jobs/9", "excerpt": "Email sales@acme-labs.com"},
+        ]
+        self.assertEqual(_store([row], source_findings=findings), (1, 0, 0))
+        lead = Lead.objects.get()
+        self.assertFalse(lead.evidence.filter(field_name="contact_info.email", source_supported=True).exists())
+        outreach = Outreach.objects.create(lead=lead, message="Hello", status="approved")
+        with self.assertRaisesMessage(ValueError, "no supporting source evidence"):
+            send_email(outreach)
 
 
 class LegacyIdentitySaveTests(TestCase):
