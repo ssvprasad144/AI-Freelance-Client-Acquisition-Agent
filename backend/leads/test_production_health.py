@@ -25,4 +25,4 @@ class ProductionHealthTests(TestCase):
         response = self.client.get("/api/health/")
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.json()["status"], "degraded")
-        self.assertEqual(response.json()["workers"]["discovery_cron"]["status"], "stale")
+        self.assertEqual(response.json()["cron_jobs"]["discovery"]["status"], "stale")
