@@ -44,9 +44,12 @@ def eligible(lead):
     if lead.replies.exists() or lead.meetings.filter(status__in=["requested","scheduled","completed"]).exists():return False
     return True
 
-def build_outreach_plans(limit=50):
+def build_outreach_plans(limit=50, owner=None):
     rows=[]
-    for lead in Lead.objects.filter(status__in=["qualified","proposal","contacted"]).select_related("client"):
+    queryset=Lead.objects.filter(status__in=["qualified","proposal","contacted"])
+    if owner is not None:
+        queryset=queryset.filter(owner=owner)
+    for lead in queryset.select_related("client"):
         if eligible(lead):
             rows.append(create_plan(lead))
             if len(rows)>=limit:break
@@ -63,9 +66,12 @@ def record_attempt_for_outreach(plan, attempted_at=None):
     return plan
 
 
-def channel_metrics():
+def channel_metrics(owner=None):
     from django.db.models import Count,Q
-    return list(OutreachPlan.objects.values("channel").annotate(
+    queryset=OutreachPlan.objects.all()
+    if owner is not None:
+        queryset=queryset.filter(lead__owner=owner)
+    return list(queryset.values("channel").annotate(
         drafts=Count("id",filter=Q(status="draft")),approved=Count("id",filter=Q(status="approved")),
         sent=Count("id",filter=Q(status="sent")),replied=Count("lead__replies",distinct=True),
         meetings=Count("lead__meetings",filter=Q(lead__meetings__status__in=["requested","scheduled","completed"]),distinct=True),

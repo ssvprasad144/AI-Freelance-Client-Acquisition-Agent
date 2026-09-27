@@ -58,12 +58,14 @@ def health(request):
     except Exception:
         return JsonResponse({"status":"unhealthy","database":"error","service":"ai-freelance-client-acquisition-agent"},status=503)
     now=timezone.now()
-    discovery=ActivityLog.objects.filter(event_type="worker.discovery.heartbeat").order_by("-created_at").first()
-    followup=ActivityLog.objects.filter(event_type="worker.followup.heartbeat").order_by("-created_at").first()
+    discovery=ActivityLog.objects.filter(event_type="cron.discovery.completed").order_by("-created_at").first()
+    followup=ActivityLog.objects.filter(event_type="cron.followup.completed").order_by("-created_at").first()
     def state(item,interval):
-        if not item:return {"status":"unknown","last_seen":None}
-        return {"status":"healthy" if (now-item.created_at).total_seconds()<=max(interval*2,120) else "stale","last_seen":item.created_at}
-    return JsonResponse({"status":"healthy","database":database,"service":"ai-freelance-client-acquisition-agent","discovery":"web_search","workers":{"discovery":state(discovery,settings.DISCOVERY_WORKER_INTERVAL),"followups":state(followup,settings.FOLLOWUP_WORKER_INTERVAL)}})
+        if not item:
+            return {"status":"unknown","last_seen":None}
+        age=(now-item.created_at).total_seconds()
+        return {"status":"healthy" if age<=max(interval*2,120) else "stale","last_seen":item.created_at}
+    return JsonResponse({"status":"healthy","database":database,"service":"ai-freelance-client-acquisition-agent","discovery":"web_search","workers":{"discovery_cron":state(discovery,settings.DISCOVERY_WORKER_INTERVAL),"followup_cron":state(followup,settings.FOLLOWUP_WORKER_INTERVAL)}})
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
@@ -82,13 +84,10 @@ def me(request): return Response({"id":request.user.id,"username":request.user.u
 
 
 def _owned_leads(request):
-    # This deployment is intentionally single-user. Keep the helper name for
-    # compatibility with the existing API code, but expose the complete
-    # acquisition workspace to the authenticated account.
-    return Lead.objects.all()
+    return Lead.objects.filter(owner=request.user)
 
 def _owned_clients(request):
-    return Client.objects.all()
+    return Client.objects.filter(owner=request.user)
 
 def _owned_lead(request, pk):
     return _owned_leads(request).filter(pk=pk).first()
@@ -151,7 +150,7 @@ def qualified_leads(request):
 
 @api_view(["POST"])
 def approve_followup(request,pk):
-    try:followup=FollowUp.objects.get(pk=pk)
+    try:followup=FollowUp.objects.select_related("lead").get(pk=pk,lead__owner=request.user)
     except FollowUp.DoesNotExist:return Response({"detail":"Follow-up not found."},status=404)
     if followup.status!="draft":return Response({"detail":"Follow-up is not in draft state."},status=400)
     followup.status="approved"; followup.approved_at=timezone.now(); followup.save(update_fields=["status","approved_at"])
@@ -195,9 +194,11 @@ def create_reply(request,pk):
     return Response({**ReplySerializer(reply).data,"classification":classification},status=201)
 
 class LeadViewSet(viewsets.ModelViewSet):
-    queryset=Lead.objects.all().prefetch_related("analysis"); serializer_class=LeadSerializer
+    queryset=Lead.objects.all().prefetch_related("analysis")
+    serializer_class=LeadSerializer
+
     def get_queryset(self):
-        return Lead.objects.all().prefetch_related("analysis")
+        return Lead.objects.filter(owner=self.request.user).prefetch_related("analysis")
     @action(detail=True,methods=["post"],throttle_classes=[AIThrottle])
     def analyze(self,request,pk=None):
         lead=self.get_object(); data=analyze_lead(lead); analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data)
@@ -316,13 +317,13 @@ def discovery_profiles(request):
 
 @api_view(["GET"])
 def analytics(request):
-    return Response(acquisition_metrics())
+    return Response(acquisition_metrics(owner=request.user))
 
 @api_view(["POST"])
 def send_followup(request,pk):
     followup=FollowUp.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
     if not followup: return Response({"detail":"Follow-up not found."},status=404)
-    claimed=FollowUp.objects.filter(pk=pk,status="due").update(status="sending")
+    claimed=FollowUp.objects.filter(pk=pk,lead__owner=request.user,status="due").update(status="sending")
     if not claimed:
         return Response({"detail":"Follow-up is not due or is already being/sent."},status=409)
     followup.refresh_from_db()
@@ -341,7 +342,7 @@ def send_followup(request,pk):
 def send_outreach(request,pk):
     outreach=Outreach.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
     if not outreach: return Response({"detail":"Outreach not found."},status=404)
-    claimed=Outreach.objects.filter(pk=pk,status="approved").update(status="sending")
+    claimed=Outreach.objects.filter(pk=pk,lead__owner=request.user,status="approved").update(status="sending")
     if not claimed:
         return Response({"detail":"Outreach is not actionable or has already been sent."},status=409)
     outreach.refresh_from_db()
@@ -498,11 +499,11 @@ def refresh_learning_view(request):
 @api_view(["GET"])
 def acquisition_queue(request):
     limit=min(max(int(request.query_params.get("limit",50)),1),100)
-    return Response(AcquisitionOpportunitySerializer(build_queue(limit),many=True).data)
+    return Response(AcquisitionOpportunitySerializer(build_queue(limit, owner=request.user),many=True).data)
 
 @api_view(["GET"])
 def acquisition_next_actions(request):
-    rows=build_queue(20)
+    rows=build_queue(20, owner=request.user)
     return Response([{"opportunity_id":x.id,"lead_id":x.lead_id,"action":x.recommended_action,"score":x.score,"reason":x.reason} for x in rows])
 
 @api_view(["POST"])
@@ -514,12 +515,12 @@ def acquisition_action(request,pk):
     except ValueError as exc:return Response({"detail":str(exc),"executed":False},status=400)
 
 @api_view(["POST"])
-def acquisition_recalculate(request): return Response(recalculate_opportunities())
+def acquisition_recalculate(request): return Response(recalculate_opportunities(owner=request.user))
 
 
 @api_view(["GET"])
 def outreach_strategy(request):
-    return Response({"plans":OutreachPlanSerializer(build_outreach_plans(50),many=True).data,"channels":channel_metrics()})
+    return Response({"plans":OutreachPlanSerializer(build_outreach_plans(50, owner=request.user),many=True).data,"channels":channel_metrics(owner=request.user)})
 
 @api_view(["POST"])
 def outreach_plan(request):
@@ -538,7 +539,7 @@ def approve_outreach_plan(request,pk):
 
 
 @api_view(["GET"])
-def revenue_dashboard(request): return Response({**revenue_metrics(),"optimization":optimization_report()})
+def revenue_dashboard(request): return Response({**revenue_metrics(owner=request.user),"optimization":optimization_report(owner=request.user)})
 
 @api_view(["GET"])
 def revenue_records(request): return _paginate(request,RevenueRecord.objects.filter(lead__owner=request.user).select_related("lead").all(),RevenueRecordSerializer)

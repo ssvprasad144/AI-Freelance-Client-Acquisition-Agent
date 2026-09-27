@@ -18,24 +18,27 @@ def _rows(qs,group):
         lost=Count("id",distinct=True,filter=Q(status="lost")),
     ).order_by("-opportunities")[:50])
 
-def acquisition_metrics():
-    total=Lead.objects.count()
-    qualified=Lead.objects.filter(status__in=["qualified","proposal","contacted","replied","won"]).count()
-    proposals=Outreach.objects.filter(status__in=["draft","approved","sent"]).count()
-    approved=Outreach.objects.filter(status__in=["approved","sent"]).count()
-    sent=Outreach.objects.filter(status="sent").count()
-    replied=Lead.objects.filter(status__in=["replied","won"]).count()
-    won=Lead.objects.filter(status="won").count()
-    lost=Lead.objects.filter(status="lost").count()
-    meetings_requested=Meeting.objects.filter(status="requested").count()
-    meetings_scheduled=Meeting.objects.filter(status="scheduled").count()
-    meetings_completed=Meeting.objects.filter(status="completed").count()
-    clients=Client.objects.count()
-    active_clients=Client.objects.filter(status__in=["active","won"]).count()
-    source_rows=_rows(Lead.objects.all(),"source")
-    type_rows=_rows(Lead.objects.all(),"lead_type")
-    profile_rows=_rows(Lead.objects.exclude(discovery_profile=""),"discovery_profile")
-    strategy_rows=_rows(Lead.objects.exclude(discovery_strategy=""),"discovery_strategy")
+def acquisition_metrics(owner=None):
+    lead_qs=Lead.objects.all()
+    if owner is not None:
+        lead_qs=lead_qs.filter(owner=owner)
+    total=lead_qs.count()
+    qualified=lead_qs.filter(status__in=["qualified","proposal","contacted","replied","won"]).count()
+    proposals=Outreach.objects.filter(lead__in=lead_qs,status__in=["draft","approved","sent"]).count()
+    approved=Outreach.objects.filter(lead__in=lead_qs,status__in=["approved","sent"]).count()
+    sent=Outreach.objects.filter(lead__in=lead_qs,status="sent").count()
+    replied=lead_qs.filter(status__in=["replied","won"]).count()
+    won=lead_qs.filter(status="won").count()
+    lost=lead_qs.filter(status="lost").count()
+    meetings_requested=Meeting.objects.filter(lead__in=lead_qs,status="requested").count()
+    meetings_scheduled=Meeting.objects.filter(lead__in=lead_qs,status="scheduled").count()
+    meetings_completed=Meeting.objects.filter(lead__in=lead_qs,status="completed").count()
+    clients=Client.objects.filter(owner=owner).count() if owner is not None else Client.objects.count()
+    active_clients=Client.objects.filter(owner=owner,status__in=["active","won"]).count() if owner is not None else Client.objects.filter(status__in=["active","won"]).count()
+    source_rows=_rows(lead_qs,"source")
+    type_rows=_rows(lead_qs,"lead_type")
+    profile_rows=_rows(lead_qs.exclude(discovery_profile=""),"discovery_profile")
+    strategy_rows=_rows(lead_qs.exclude(discovery_strategy=""),"discovery_strategy")
     domain_rows=list(DiscoveryDomainStat.objects.values("domain","searches","results","qualified","replied","won").order_by("-qualified","-results")[:50])
     learning_rows=list(LearningStat.objects.values().order_by("-reward","-attempts")[:50])
     funnel=[
@@ -58,7 +61,7 @@ def acquisition_metrics():
             "send_rate":_rate(sent,approved),"reply_rate":_rate(replied,sent),"meeting_request_rate":_rate(meetings_requested,replied),
             "meeting_completion_rate":_rate(meetings_completed,meetings_scheduled),"win_rate":_rate(won,meetings_completed or replied),
         },
-        "clients":{"total":clients,"active_or_won":active_clients,"new_prospects":Client.objects.filter(status="prospect").count()},
+        "clients":{"total":clients,"active_or_won":active_clients,"new_prospects":(Client.objects.filter(owner=owner,status="prospect").count() if owner is not None else Client.objects.filter(status="prospect").count())},
         "meetings":{"requested":meetings_requested,"scheduled":meetings_scheduled,"completed":meetings_completed,"cancelled":Meeting.objects.filter(status="cancelled").count(),"no_show":Meeting.objects.filter(status="no_show").count()},
         "funnel_series":funnel,"sources":source_rows,"lead_types":type_rows,"profiles":profile_rows,"strategies":strategy_rows,
         "domains":domain_rows,"learning":learning_rows,"search_learning":_search_learning(),"arm_learning":arm_performance(),"domain_learning":domain_performance(),"revenue":revenue_metrics(),"generated_at":timezone.now()
