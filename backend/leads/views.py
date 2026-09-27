@@ -58,12 +58,14 @@ def health(request):
     except Exception:
         return JsonResponse({"status":"unhealthy","database":"error","service":"ai-freelance-client-acquisition-agent"},status=503)
     now=timezone.now()
-    discovery=ActivityLog.objects.filter(event_type="worker.discovery.heartbeat").order_by("-created_at").first()
-    followup=ActivityLog.objects.filter(event_type="worker.followup.heartbeat").order_by("-created_at").first()
+    discovery=ActivityLog.objects.filter(event_type="cron.discovery.completed").order_by("-created_at").first()
+    followup=ActivityLog.objects.filter(event_type="cron.followup.completed").order_by("-created_at").first()
     def state(item,interval):
-        if not item:return {"status":"unknown","last_seen":None}
-        return {"status":"healthy" if (now-item.created_at).total_seconds()<=max(interval*2,120) else "stale","last_seen":item.created_at}
-    return JsonResponse({"status":"healthy","database":database,"service":"ai-freelance-client-acquisition-agent","discovery":"web_search","workers":{"discovery":state(discovery,settings.DISCOVERY_WORKER_INTERVAL),"followups":state(followup,settings.FOLLOWUP_WORKER_INTERVAL)}})
+        if not item:
+            return {"status":"unknown","last_seen":None}
+        age=(now-item.created_at).total_seconds()
+        return {"status":"healthy" if age<=max(interval*2,120) else "stale","last_seen":item.created_at}
+    return JsonResponse({"status":"healthy","database":database,"service":"ai-freelance-client-acquisition-agent","discovery":"web_search","workers":{"discovery_cron":state(discovery,settings.DISCOVERY_WORKER_INTERVAL),"followup_cron":state(followup,settings.FOLLOWUP_WORKER_INTERVAL)}})
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
@@ -322,7 +324,7 @@ def analytics(request):
 def send_followup(request,pk):
     followup=FollowUp.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
     if not followup: return Response({"detail":"Follow-up not found."},status=404)
-    claimed=FollowUp.objects.filter(pk=pk,status="due").update(status="sending")
+    claimed=FollowUp.objects.filter(pk=pk,lead__owner=request.user,status="due").update(status="sending")
     if not claimed:
         return Response({"detail":"Follow-up is not due or is already being/sent."},status=409)
     followup.refresh_from_db()
@@ -341,7 +343,7 @@ def send_followup(request,pk):
 def send_outreach(request,pk):
     outreach=Outreach.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
     if not outreach: return Response({"detail":"Outreach not found."},status=404)
-    claimed=Outreach.objects.filter(pk=pk,status="approved").update(status="sending")
+    claimed=Outreach.objects.filter(pk=pk,lead__owner=request.user,status="approved").update(status="sending")
     if not claimed:
         return Response({"detail":"Outreach is not actionable or has already been sent."},status=409)
     outreach.refresh_from_db()
