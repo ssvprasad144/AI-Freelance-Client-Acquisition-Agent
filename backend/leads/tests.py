@@ -195,9 +195,9 @@ class FollowUpClaimTests(APITestBase):
 
 
 class SingleUserWorkspaceTests(TestCase):
-    def test_authenticated_user_can_read_worker_leads_without_owner(self):
+    def test_authenticated_user_can_read_owned_worker_lead(self):
         user=get_user_model().objects.create_user(username="single-user",password="pass12345")
-        lead=Lead.objects.create(title="Worker Lead",description="Discovery result",source_url="https://example.com/worker")
+        lead=Lead.objects.create(owner=user,title="Worker Lead",description="Discovery result",source_url="https://example.com/worker")
         client=APIClient(); client.force_authenticate(user)
         response=client.get(f"/api/leads/{lead.id}/")
         self.assertEqual(response.status_code,200)
@@ -209,12 +209,11 @@ class SingleUserEndToEndSafetyTests(TestCase):
         self.client=APIClient(); self.client.force_authenticate(self.user)
         self.lead=Lead.objects.create(owner=self.user,title="Automation Lead",description="Build automation",source_url="https://example.com/jobs/1")
 
-    def test_single_user_workspace_can_access_all_acquisition_leads(self):
+    def test_single_user_workspace_cannot_access_other_owner_leads(self):
         other=get_user_model().objects.create_user(username="other",password="pass12345")
         other_lead=Lead.objects.create(owner=other,title="Other Lead",description="Other",source_url="https://other.example/1")
         response=self.client.get(f"/api/leads/{other_lead.id}/")
-        self.assertEqual(response.status_code,200)
-        self.assertEqual(response.data["id"],other_lead.id)
+        self.assertEqual(response.status_code,404)
 
     def test_worker_owner_defaults_to_first_user(self):
         from .discovery_cycle import run_discovery_cycle
