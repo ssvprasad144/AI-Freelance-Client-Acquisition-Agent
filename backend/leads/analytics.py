@@ -1,3 +1,5 @@
+import math
+
 from django.db.models import Count,Q,Sum
 from django.utils import timezone
 from .models import DiscoveryDomainStat,DiscoverySearchStat,Lead,Outreach,Meeting,Client,AcquisitionEvent,LearningStat
@@ -5,6 +7,16 @@ from .discovery.profiles import arm_performance,domain_performance
 from .revenue_intelligence import revenue_metrics
 
 def _rate(n,d): return round((n/d)*100,2) if d else 0
+
+def _json_safe(value):
+    """Prevent non-finite floats from breaking DRF JSON serialization."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    return value
 
 def _rows(qs,group):
     return list(qs.values(group).annotate(
@@ -54,7 +66,7 @@ def acquisition_metrics(owner=None):
         {"stage":"won","count":won},
         {"stage":"lost","count":lost},
     ]
-    return {
+    return _json_safe({
         "funnel":{"discovered":total,"qualified":qualified,"proposals":proposals,"approved":approved,"sent":sent,"replied":replied,"meeting_requested":meetings_requested,"meeting_scheduled":meetings_scheduled,"meeting_completed":meetings_completed,"won":won,"lost":lost},
         "rates":{
             "qualification_rate":_rate(qualified,total),"proposal_rate":_rate(proposals,qualified),"approval_rate":_rate(approved,proposals),
@@ -65,7 +77,7 @@ def acquisition_metrics(owner=None):
         "meetings":{"requested":meetings_requested,"scheduled":meetings_scheduled,"completed":meetings_completed,"cancelled":Meeting.objects.filter(status="cancelled").count(),"no_show":Meeting.objects.filter(status="no_show").count()},
         "funnel_series":funnel,"sources":source_rows,"lead_types":type_rows,"profiles":profile_rows,"strategies":strategy_rows,
         "domains":domain_rows,"learning":learning_rows,"search_learning":_search_learning(),"arm_learning":arm_performance(),"domain_learning":domain_performance(),"revenue":revenue_metrics(),"generated_at":timezone.now()
-    }
+    })
 
 def _search_learning():
     rows=DiscoverySearchStat.objects.values("profile_id","strategy_id").annotate(searches=Count("id"),created=Sum("newly_created_leads"),qualified=Sum("qualified"),replied=Sum("replied"),won=Sum("won"))
