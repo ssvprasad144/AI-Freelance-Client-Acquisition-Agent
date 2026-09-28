@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime
 from urllib.parse import urlsplit
 from ipaddress import ip_address
 from typing import Any
@@ -69,7 +70,7 @@ class LiveDiscoveryError(Exception):
 
 
 SYSTEM_PROMPT = """You are a live freelance opportunity discovery assistant.
-Use the web search tool to find CURRENT, publicly available freelance or contract opportunities that match the developer profile and the user's search request.
+The current date is supplied in the request. Use the web search tool to find CURRENT, publicly available freelance or contract opportunities that match the developer profile and the user's search request.
 Return ONLY valid JSON in this shape:
 {
   "leads": [{
@@ -80,7 +81,11 @@ Return ONLY valid JSON in this shape:
   }]
 }
 Rules:
-- Prefer current opportunities with a verifiable public source URL.
+- Only return opportunities that are currently actionable as of the supplied current date.
+- Every returned opportunity MUST have an explicit posting/publication date supported by the search findings. If no posting date can be verified, omit the opportunity.
+- Convert relative dates into an absolute ISO-8601 date using the supplied current date.
+- Reject listings that are closed, filled, awarded, completed, expired, withdrawn, or otherwise no longer accepting applications.
+- Prefer direct listing pages over aggregators, articles, tutorials, or generic category pages.
 - When the result exposes a distinct application/bid/contact URL, return it as action_url; otherwise omit it and let the system use source_url.
 - Preserve the exact public URL supplied by the search result; never fabricate URL paths.
 - Never invent a company, budget, contact, project, or URL.
@@ -106,8 +111,11 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
         raise LiveDiscoveryError("OPENAI_API_KEY is required for live discovery.")
 
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    current_date = datetime.now().astimezone().date().isoformat()
     prompt = {
         "profile": settings.FREELANCE_SEARCH_PROFILE,
+        "current_date": current_date,
+        "freshness_window_days": settings.DISCOVERY_MAX_AGE_DAYS,
         "query": query + (" " + domain_exclusions if domain_exclusions else ""),
         "search_rules": {
             "current_only": True,
@@ -115,6 +123,8 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
             "exclude_login_only_sources": True,
             "max_results": settings.DISCOVERY_MAX_RESULTS,
             "domain_exclusions": domain_exclusions,
+            "require_verified_posted_date": True,
+            "reject_stale_or_closed": True,
         },
     }
 
@@ -159,6 +169,8 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
                                 "enum": ["freelance", "direct", "startup", "other"],
                             },
                             "budget_text": {"type": "string"},
+                            "posted_at": {"type": "string"},
+                            "expires_at": {"type": "string"},
                             "technologies": {
                                 "type": "array",
                                 "items": {"type": "string"},
@@ -177,7 +189,7 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
                         "required": [
                             "title", "company", "description", "source",
                             "source_url", "action_url", "lead_type",
-                            "budget_text", "technologies", "contact_info",
+                            "budget_text", "posted_at", "expires_at", "technologies", "contact_info",
                         ],
                         "additionalProperties": False,
                     },
@@ -234,6 +246,8 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
             continue
         lead["source"] = lead.get("source") or "web_search"
         lead["lead_type"] = lead.get("lead_type") or "freelance"
+        lead["posted_at"] = (lead.get("posted_at") or "").strip()
+        lead["expires_at"] = (lead.get("expires_at") or "").strip()
         lead["technologies"] = lead.get("technologies") or []
         lead["contact_info"] = lead.get("contact_info") or {}
         if lead.get("action_url") and isinstance(lead["action_url"], str) and _safe_public_url(lead["action_url"]):
