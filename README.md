@@ -108,6 +108,19 @@ Frontend:
 GitHub Actions runs both backend tests and the frontend production build on pushes and pull requests to main.
 
 
+## Autonomous supervisor
+
+The acquisition system now has a single idempotent supervisor cycle. The Render acquisition cron invokes `python manage.py run_autonomous_cycle` every minute. The supervisor:
+
+- checks whether the six-hour discovery window is due before performing live search;
+- continuously recalculates the acquisition queue;
+- automatically qualifies eligible leads, generates proposal drafts, and prepares outreach plans;
+- prepares approved follow-ups when their scheduled time arrives but does not send messages;
+- stops at explicit human-approval boundaries for proposals/outreach and records the pending action;
+- records cycle start/completion/failure state for recovery and monitoring.
+
+The one-minute cadence is an orchestration cadence, not a one-minute web-search cadence. Existing search-budget, cache, freshness, crawler and qualification controls remain active.
+
 ## Client acquisition engine
 
 The acquisition layer now includes:

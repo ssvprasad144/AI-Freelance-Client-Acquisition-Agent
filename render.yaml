@@ -93,8 +93,8 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt && python manage.py check --deploy
     region: singapore
-    schedule: '0 */6 * * *'
-    startCommand: python manage.py run_discovery_cycle
+    schedule: '* * * * *'
+    startCommand: python manage.py run_autonomous_cycle
     envVars:
       - key: DJANGO_SECRET_KEY
         sync: false
@@ -116,6 +116,8 @@ services:
         value: gpt-4o-mini
       - key: DISCOVERY_MODEL
         value: gpt-4o-mini
+      - key: ACQUISITION_AUTOMATION_MODE
+        value: "automatic"
       - key: DISCOVERY_WORKER_INTERVAL
         value: "21600"
       - key: DISCOVERY_QUERY_CACHE_TTL_HOURS
