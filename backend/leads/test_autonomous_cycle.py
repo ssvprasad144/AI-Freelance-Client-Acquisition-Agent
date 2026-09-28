@@ -127,7 +127,7 @@ class AutonomousCycleTests(TestCase):
 
     def test_supervisor_releases_lease_after_unexpected_failure(self):
         from .models import SupervisorLease
-        lease = SupervisorLease.objects.create(key="acquisition-supervisor")
+        lease, _ = SupervisorLease.objects.get_or_create(key="acquisition-supervisor")
         with patch(
             "leads.autonomous_cycle._owners",
             side_effect=RuntimeError("owner lookup failed"),
