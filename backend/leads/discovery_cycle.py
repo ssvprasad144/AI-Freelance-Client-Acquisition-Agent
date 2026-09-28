@@ -253,7 +253,19 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
         local=local_lead_score(lead)
         if not should_ai_qualify(lead): data=ai_skip_analysis(lead,local); locally_filtered+=1
         else:
-            data=analyze_lead(lead); ai_input_tokens+=int(data.get("input_tokens",0) or 0); ai_output_tokens+=int(data.get("output_tokens",0) or 0)
+            data=analyze_lead(lead)
+            ai_input_tokens+=int(data.get("input_tokens",0) or 0)
+            ai_output_tokens+=int(data.get("output_tokens",0) or 0)
+            ai_score=max(0,min(100,int(data.get("match_score",0) or 0)))
+            local_score=local["score"]
+            category_count=len(local["service_hits"])
+            blended=round(ai_score*0.65+local_score*0.35)
+            if not data.get("relevant"):
+                blended=min(blended,49)
+            if category_count < 2:
+                blended=min(blended,local_score+25)
+            data["match_score"]=max(0,min(100,blended))
+            data["confidence"]=min(int(data.get("confidence",0) or 0),90) if category_count < 2 else int(data.get("confidence",0) or 0)
         analysis,_=LeadAnalysis.objects.update_or_create(lead=lead,defaults=data); analyzed+=1
         if analysis.relevant and analysis.match_score>=settings.QUALIFICATION_MIN_SCORE:
             lead.status="qualified"; lead.save(update_fields=["status","updated_at"]); qualified+=1
