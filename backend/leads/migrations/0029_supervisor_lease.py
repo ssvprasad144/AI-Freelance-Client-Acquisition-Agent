@@ -19,7 +19,6 @@ class Migration(migrations.Migration):
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
             ],
-            options={"indexes": [models.Index(fields=["key", "locked_until"], name="leads_superv_key_lease_idx")]},
         ),
         migrations.RunPython(seed_lease, migrations.RunPython.noop),
     ]
