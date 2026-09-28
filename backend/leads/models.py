@@ -2,6 +2,16 @@ from django.db import models
 from django.conf import settings
 from django.utils import timezone
 
+class SupervisorLease(models.Model):
+    key = models.CharField(max_length=100, unique=True)
+    run_id = models.CharField(max_length=64, blank=True)
+    locked_until = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["key", "locked_until"])]
+
 class Lead(models.Model):
     owner=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,null=True,blank=True,related_name="acquisition_leads",db_index=True)
     STATUS=[("new","New"),("qualified","Qualified"),("proposal","Proposal"),("contacted","Contacted"),("replied","Replied"),("won","Won"),("lost","Lost"),("archived","Archived")]
