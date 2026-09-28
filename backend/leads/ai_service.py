@@ -165,14 +165,24 @@ def generate_proposal(lead, analysis) -> str:
             "recommended_approach": analysis.recommended_approach,
         },
     }
-    response = client.responses.create(
-        model=settings.OPENAI_MODEL,
-        input=[
-            {"role": "system", "content": PROPOSAL_SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(prompt, separators=(",", ":"))},
-        ],
-        max_output_tokens=settings.AI_PROPOSAL_MAX_OUTPUT_TOKENS,
-    )
+    try:
+        response = client.responses.create(
+            model=settings.OPENAI_MODEL,
+            input=[
+                {"role": "system", "content": PROPOSAL_SYSTEM_PROMPT},
+                {"role": "user", "content": json.dumps(prompt, separators=(",", ":"))},
+            ],
+            max_output_tokens=settings.AI_PROPOSAL_MAX_OUTPUT_TOKENS,
+        )
+    except Exception as exc:
+        ActivityLog.objects.create(
+            lead=lead,
+            event_type="ai.provider_error",
+            message="Proposal AI provider failed; deterministic proposal fallback used.",
+            metadata={"operation":"proposal","error":str(exc)[:500],"model":settings.OPENAI_MODEL},
+        )
+        parts=personalize_proposal(lead,analysis)
+        return "\n\n".join([parts["opening"],parts["fit"],parts["evidence"],parts["approach"],parts["next_step"],parts["closing"]])
     input_tokens, output_tokens, cached_tokens = _usage(response)
     ActivityLog.objects.create(
         lead=lead,
