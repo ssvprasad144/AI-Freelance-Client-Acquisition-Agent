@@ -179,5 +179,16 @@ def run_autonomous_cycle():
             metadata=result,
         )
         return result
+    except Exception as exc:
+        failure = {"run_id": run_id, "error": str(exc)[:500]}
+        try:
+            ActivityLog.objects.create(
+                event_type="automation.cycle.failed",
+                message="Autonomous acquisition supervisor cycle failed unexpectedly; the next scheduled cycle can retry.",
+                metadata=failure,
+            )
+        except Exception:
+            pass
+        return {"run_id": run_id, "skipped": False, "failures": [failure]}
     finally:
         _release_supervisor(run_id)
