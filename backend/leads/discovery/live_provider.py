@@ -129,9 +129,8 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
     }
 
     try:
-        # Web Search and JSON mode cannot be combined in one Responses API call.
-        # First gather grounded search findings, then normalize them in a second
-        # Responses API call that has no web_search tool and can use structured output.
+        # Prefer a single grounded web-search call. The prompt requests strict JSON,
+        # so a second normalization call is only used when the model does not comply.
         search_response = client.responses.create(
             model=settings.DISCOVERY_MODEL,
             tools=[{
@@ -144,93 +143,64 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": json.dumps(prompt)},
             ],
+            max_output_tokens=settings.DISCOVERY_SEARCH_MAX_OUTPUT_TOKENS,
         )
 
         search_text = (search_response.output_text or "").strip()
         if not search_text:
             raise LiveDiscoveryError("Live discovery returned no search findings.")
 
-        extraction_schema = {
-            "type": "object",
-            "properties": {
-                "leads": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "title": {"type": "string"},
-                            "company": {"type": "string"},
-                            "description": {"type": "string"},
-                            "source": {"type": "string"},
-                            "source_url": {"type": "string"},
-                            "action_url": {"type": "string"},
-                            "lead_type": {
-                                "type": "string",
-                                "enum": ["freelance", "direct", "startup", "other"],
-                            },
-                            "budget_text": {"type": "string"},
-                            "posted_at": {"type": "string"},
-                            "expires_at": {"type": "string"},
-                            "technologies": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                            },
-                            "contact_info": {
-                                "type": "object",
-                                "properties": {
-                                    "name": {"type": "string"},
-                                    "email": {"type": "string"},
-                                    "phone": {"type": "string"},
+        try:
+            payload = _extract_json(search_text)
+            if not isinstance(payload, dict) or not isinstance(payload.get("leads"), list):
+                raise ValueError("search response did not contain a leads list")
+        except (json.JSONDecodeError, TypeError, ValueError):
+            # Reliability fallback: normalize malformed model output with a second
+            # inexpensive call using strict structured output.
+            extraction_schema = {
+                "type": "object",
+                "properties": {
+                    "leads": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "company": {"type": "string"},
+                                "description": {"type": "string"},
+                                "source": {"type": "string"},
+                                "source_url": {"type": "string"},
+                                "action_url": {"type": "string"},
+                                "lead_type": {"type": "string", "enum": ["freelance", "direct", "startup", "other"]},
+                                "budget_text": {"type": "string"},
+                                "posted_at": {"type": "string"},
+                                "expires_at": {"type": "string"},
+                                "technologies": {"type": "array", "items": {"type": "string"}},
+                                "contact_info": {
+                                    "type": "object",
+                                    "properties": {"name": {"type": "string"}, "email": {"type": "string"}, "phone": {"type": "string"}},
+                                    "required": ["name", "email", "phone"],
+                                    "additionalProperties": False,
                                 },
-                                "required": ["name", "email", "phone"],
-                                "additionalProperties": False,
                             },
+                            "required": ["title", "company", "description", "source", "source_url", "action_url", "lead_type", "budget_text", "posted_at", "expires_at", "technologies", "contact_info"],
+                            "additionalProperties": False,
                         },
-                        "required": [
-                            "title", "company", "description", "source",
-                            "source_url", "action_url", "lead_type",
-                            "budget_text", "posted_at", "expires_at", "technologies", "contact_info",
-                        ],
-                        "additionalProperties": False,
                     },
                 },
-            },
-            "required": ["leads"],
-            "additionalProperties": False,
-        }
-
-        extraction_response = client.responses.create(
-            model=settings.DISCOVERY_MODEL,
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Convert the grounded web-search findings into the requested schema. "
-                        "Use only facts and URLs present in the findings. Never invent URLs, companies, budgets, contacts, dates, or opportunities. "
-                        "posted_at must be an ISO-8601 date derived from explicit source evidence. If the posting date cannot be verified, omit the opportunity. "
-                        "Reject old, closed, filled, awarded, completed, expired, or withdrawn opportunities. "
-                        "Return an empty leads array when the findings do not contain suitable current opportunities."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps({
-                        "search_request": prompt,
-                        "search_findings": search_text,
-                    }),
-                },
-            ],
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "live_discovery_result",
-                    "strict": True,
-                    "schema": extraction_schema,
-                }
-            },
-        )
-
-        payload = _extract_json(extraction_response.output_text or "")
+                "required": ["leads"],
+                "additionalProperties": False,
+            }
+            extraction_response = client.responses.create(
+                model=settings.DISCOVERY_MODEL,
+                input=[
+                    {"role": "system", "content": "Normalize these grounded search findings into the schema. Use only supplied facts and URLs. Never invent dates, companies, budgets, contacts or URLs. Omit opportunities without a verified posting date or that are closed/stale."},
+                    {"role": "user", "content": json.dumps({"search_request": prompt, "search_findings": search_text})},
+                ],
+                text={"format": {"type": "json_schema", "name": "live_discovery_result", "strict": True, "schema": extraction_schema}},
+                max_output_tokens=settings.DISCOVERY_EXTRACTION_MAX_OUTPUT_TOKENS,
+            )
+            payload = _extract_json(extraction_response.output_text or "")
     except LiveDiscoveryError:
         raise
     except Exception as exc:
