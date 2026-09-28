@@ -1,5 +1,6 @@
 import hashlib
 import re
+from datetime import datetime
 from urllib.parse import urlsplit
 from ipaddress import ip_address
 
@@ -90,6 +91,41 @@ def _daily_manual_search_count():
         created_at__date=timezone.localdate(),
         metadata__manual=True,
     ).count()
+
+def _parse_discovery_datetime(value):
+    if not value:
+        return None
+    try:
+        raw=str(value).strip().replace("Z","+00:00")
+        parsed=datetime.fromisoformat(raw)
+        if parsed.tzinfo is None:
+            parsed=timezone.make_aware(parsed,timezone.get_current_timezone())
+        return parsed
+    except (TypeError,ValueError):
+        return None
+
+
+def _fresh_actionable_items(items):
+    now=timezone.now()
+    cutoff=now-timezone.timedelta(days=settings.DISCOVERY_MAX_AGE_DAYS)
+    fresh=[]
+    rejected=0
+    stale_markers=("closed","filled","awarded","completed","expired","withdrawn","no longer accepting","not accepting")
+    for item in items:
+        posted=_parse_discovery_datetime(item.get("posted_at"))
+        expires=_parse_discovery_datetime(item.get("expires_at"))
+        text=" ".join([str(item.get("title","")),str(item.get("description",""))]).lower()
+        if not posted or posted < cutoff or posted > now+timezone.timedelta(days=1) or any(marker in text for marker in stale_markers):
+            rejected+=1
+            continue
+        if expires and expires <= now:
+            rejected+=1
+            continue
+        item["posted_at"]=posted
+        item["expires_at"]=expires
+        fresh.append(item)
+    return fresh,rejected
+
 
 def _preview_score(item):
     preview=type("LeadPreview",(),{"title":item.get("title",""),"description":item.get("description",""),"budget_text":item.get("budget_text",""),"technologies":item.get("technologies") or [],"source_url":item.get("source_url","")})()
@@ -189,7 +225,9 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
     elif not (cache_fresh or reused_cache):
         result=DiscoveryService().discover(query,source); items=result.get("leads",[])
 
-    raw_results=len(items); valid_results=sum(1 for item in items if item.get("title") and item.get("description") and item.get("source_url"))
+    raw_results=len(items)
+    items,rejected_stale=_fresh_actionable_items(items)
+    valid_results=sum(1 for item in items if item.get("title") and item.get("description") and item.get("source_url"))
     ranked=[]; seen=set()
     for item in items:
         if not item.get("title") or not item.get("description") or not _safe_public_url(item.get("source_url")): continue
@@ -225,7 +263,7 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
         ensure_opportunity(lead)
     _refresh_domain_outcomes(items, owner=owner)
     actual_search=bool(source=="live" and not (cache_fresh or reused_cache))
-    payload=_payload(query,profile_id,source=result.get("source",source) if 'result' in locals() else source,model=result.get("model","unknown") if 'result' in locals() else "cached",cached=not actual_search,searched=actual_search,reused=bool(reused_cache),discovered=len(items),created=created,duplicates=duplicates,invalid=invalid,analyzed=analyzed,qualified=qualified,locally_filtered=locally_filtered,ai_calls=analyzed-locally_filtered,ai_input_tokens=ai_input_tokens,ai_output_tokens=ai_output_tokens,raw_results=raw_results,valid_results=valid_results,unique_results=len(seen),scored_candidates=len(ranked),crawled_candidates=crawled_candidates,strategy_id=strategy_id,query_variant=(selected or {}).get("query_variant","base"),context_size=(selected or {}).get("context_size",settings.DISCOVERY_SEARCH_CONTEXT_SIZE))
+    payload=_payload(query,profile_id,source=result.get("source",source) if 'result' in locals() else source,model=result.get("model","unknown") if 'result' in locals() else "cached",cached=not actual_search,searched=actual_search,reused=bool(reused_cache),discovered=len(items),created=created,duplicates=duplicates,invalid=invalid,analyzed=analyzed,qualified=qualified,locally_filtered=locally_filtered,ai_calls=analyzed-locally_filtered,ai_input_tokens=ai_input_tokens,ai_output_tokens=ai_output_tokens,raw_results=raw_results,valid_results=valid_results,unique_results=len(seen),scored_candidates=len(ranked),crawled_candidates=crawled_candidates,rejected_stale=rejected_stale,strategy_id=strategy_id,query_variant=(selected or {}).get("query_variant","base"),context_size=(selected or {}).get("context_size",settings.DISCOVERY_SEARCH_CONTEXT_SIZE))
     if actual_search:
         _write_search_stat(profile_id,strategy_id,query,result.get("source","web_search"),query_family=query_family(profile_id,strategy_id),query_variant=(selected or {}).get("query_variant","base"),source_domains=domains,context_size=(selected or {}).get("context_size",settings.DISCOVERY_SEARCH_CONTEXT_SIZE),raw_results=raw_results,valid_results=valid_results,unique_results=len(seen),scored_candidates=len(ranked),crawled_candidates=crawled_candidates,newly_created_leads=created,duplicates=duplicates,locally_filtered=locally_filtered,ai_calls=analyzed-locally_filtered,analyzed=analyzed,qualified=qualified)
     ActivityLog.objects.create(event_type="ai.usage",message="Discovery AI usage recorded.",metadata={"operation":"qualification","model":result.get("model","unknown") if 'result' in locals() else "cached","ai_calls":analyzed-locally_filtered,"input_tokens":ai_input_tokens,"output_tokens":ai_output_tokens})
