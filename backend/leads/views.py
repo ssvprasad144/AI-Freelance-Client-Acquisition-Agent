@@ -66,6 +66,10 @@ def health(request):
         age=(now-item.created_at).total_seconds()
         return {"status":"healthy" if age<=max(interval*2,120) else "stale","last_seen":item.created_at}
     supervisor_state=state(supervisor, 180)
+    discovery_event=ActivityLog.objects.filter(event_type__in=["discovery.completed","discovery.skipped","discovery.cache_hit"]).order_by("-created_at").first()
+    followup_event=ActivityLog.objects.filter(event_type__in=["cron.followup.completed","cron.followup.failed"]).order_by("-created_at").first()
+    discovery_state=state(discovery_event, 900)
+    followup_state=state(followup_event, 1800)
     stale=supervisor_state["status"]=="stale"
     from datetime import timedelta
     recent_failures=ActivityLog.objects.filter(
@@ -83,7 +87,7 @@ def health(request):
     payload={"status":"degraded" if stale or recent_failures else "healthy",
              "database":database,"service":"ai-freelance-client-acquisition-agent",
              "discovery":"web_search",
-             "cron_jobs":{"supervisor":supervisor_state},
+             "cron_jobs":{"supervisor":supervisor_state,"discovery":discovery_state,"followups":followup_state},
              "observability":{"recent_failures_1h":recent_failures,"outbound_recoveries_1h":recent_recoveries}}
     return JsonResponse(payload,status=503 if stale or recent_failures else 200)
 
