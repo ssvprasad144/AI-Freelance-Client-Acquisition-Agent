@@ -379,9 +379,9 @@ def send_followup(request,pk):
         followup.status="due"; followup.save(update_fields=["status"])
         return Response({"detail":str(exc),"sent":False},status=400)
     except Exception as exc:
-        followup.status="due"; followup.save(update_fields=["status"])
-        ActivityLog.objects.create(lead=followup.lead,event_type="followup.error",message="Configured follow-up provider failed.",metadata={"followup_id":followup.id,"error":str(exc)})
-        return Response({"detail":"Outbound provider failed.","sent":False},status=502)
+        followup.status="send_uncertain"; followup.save(update_fields=["status"])
+        ActivityLog.objects.create(lead=followup.lead,event_type="followup.error",message="Configured follow-up provider failed after an ambiguous delivery attempt; automatic retry is blocked.",metadata={"followup_id":followup.id,"error":str(exc)[:500],"requires_reconciliation":True})
+        return Response({"detail":"Outbound provider failed; delivery status is uncertain and requires reconciliation.","sent":False},status=502)
 
 @api_view(["POST"])
 def send_outreach(request,pk):
@@ -406,9 +406,9 @@ def send_outreach(request,pk):
         outreach.status="approved"; outreach.save(update_fields=["status"])
         return Response({"detail":str(exc),"sent":False},status=400)
     except Exception as exc:
-        outreach.status="approved"; outreach.save(update_fields=["status"])
-        ActivityLog.objects.create(lead=outreach.lead,event_type="outreach.error",message="Configured outreach provider failed.",metadata={"outreach_id":outreach.id,"error":str(exc)})
-        return Response({"detail":"Outbound provider failed.","sent":False},status=502)
+        outreach.status="send_uncertain"; outreach.save(update_fields=["status"])
+        ActivityLog.objects.create(lead=outreach.lead,event_type="outreach.error",message="Configured outreach provider failed after an ambiguous delivery attempt; automatic retry is blocked.",metadata={"outreach_id":outreach.id,"error":str(exc)[:500],"requires_reconciliation":True})
+        return Response({"detail":"Outbound provider failed; delivery status is uncertain and requires reconciliation.","sent":False},status=502)
 
 
 @api_view(["GET"])

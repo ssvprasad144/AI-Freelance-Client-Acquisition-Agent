@@ -31,9 +31,11 @@ def _should_run_discovery():
     ).total_seconds() >= interval
 
 
-def _claim_supervisor(run_id, ttl_seconds=300):
+def _claim_supervisor(run_id, ttl_seconds=None):
     now = timezone.now()
-    until = now + timezone.timedelta(seconds=max(ttl_seconds, 60))
+    if ttl_seconds is None:
+        ttl_seconds = getattr(settings, "AUTONOMOUS_CYCLE_LEASE_SECONDS", 900)
+    until = now + timezone.timedelta(seconds=max(int(ttl_seconds), 60))
     with transaction.atomic():
         lease, _ = SupervisorLease.objects.select_for_update().get_or_create(
             key="acquisition-supervisor"
@@ -97,17 +99,18 @@ def run_autonomous_cycle():
     if not _claim_supervisor(run_id):
         return {"run_id": run_id, "skipped": True, "reason": "another supervisor cycle is already running"}
 
-    owners = _owners()
     actions, blocked, failures = [], [], []
     discovery = None
     followups = {"processed": 0, "sent": False}
+    owners = []
 
-    ActivityLog.objects.create(
-        event_type="automation.cycle.started",
-        message="Autonomous acquisition supervisor cycle started.",
-        metadata={"run_id": run_id, "owners": [user.id for user in owners]},
-    )
     try:
+        owners = _owners()
+        ActivityLog.objects.create(
+            event_type="automation.cycle.started",
+            message="Autonomous acquisition supervisor cycle started.",
+            metadata={"run_id": run_id, "owners": [user.id for user in owners]},
+        )
         if _should_run_discovery():
             try:
                 from leads.discovery.profiles import select_profile
@@ -176,5 +179,16 @@ def run_autonomous_cycle():
             metadata=result,
         )
         return result
+    except Exception as exc:
+        failure = {"run_id": run_id, "error": str(exc)[:500]}
+        try:
+            ActivityLog.objects.create(
+                event_type="automation.cycle.failed",
+                message="Autonomous acquisition supervisor cycle failed unexpectedly; the next scheduled cycle can retry.",
+                metadata=failure,
+            )
+        except Exception:
+            pass
+        return {"run_id": run_id, "skipped": False, "failures": [failure]}
     finally:
         _release_supervisor(run_id)

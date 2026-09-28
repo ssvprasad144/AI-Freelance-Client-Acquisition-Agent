@@ -99,7 +99,7 @@ class FollowUpSequence(models.Model):
     updated_at=models.DateTimeField(auto_now=True)
 
 class FollowUp(models.Model):
-    STATUS=[("draft","Draft"),("approved","Approved"),("due","Due"),("sending","Sending"),("sent","Sent"),("cancelled","Cancelled")]
+    STATUS=[("draft","Draft"),("approved","Approved"),("due","Due"),("sending","Sending"),("send_uncertain","Send uncertain"),("sent","Sent"),("cancelled","Cancelled")]
     lead=models.ForeignKey(Lead,on_delete=models.CASCADE,related_name="followups"); sequence=models.ForeignKey(FollowUpSequence,on_delete=models.SET_NULL,null=True,blank=True,related_name="followups")
     step_number=models.PositiveSmallIntegerField(default=1)
     medium=models.CharField(max_length=40,default="email")
