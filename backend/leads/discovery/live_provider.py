@@ -76,7 +76,7 @@ Return ONLY valid JSON in this shape:
   "leads": [{
     "title": "string", "company": "string", "description": "string",
     "source": "string", "source_url": "https://...", "action_url": "https://...",
-    "lead_type": "freelance|direct|startup|other", "budget_text": "string",
+    "lead_type": "freelance|direct|startup|other", "budget_text": "string", "posted_at": "ISO-8601 date", "expires_at": "ISO-8601 date or empty",
     "technologies": ["string"], "contact_info": {}
   }]
 }
@@ -206,9 +206,10 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
                     "role": "system",
                     "content": (
                         "Convert the grounded web-search findings into the requested schema. "
-                        "Use only facts and URLs present in the findings. Never invent URLs, "
-                        "companies, budgets, contacts, or opportunities. Return an empty "
-                        "leads array when the findings do not contain suitable current opportunities."
+                        "Use only facts and URLs present in the findings. Never invent URLs, companies, budgets, contacts, dates, or opportunities. "
+                        "posted_at must be an ISO-8601 date derived from explicit source evidence. If the posting date cannot be verified, omit the opportunity. "
+                        "Reject old, closed, filled, awarded, completed, expired, or withdrawn opportunities. "
+                        "Return an empty leads array when the findings do not contain suitable current opportunities."
                     ),
                 },
                 {
