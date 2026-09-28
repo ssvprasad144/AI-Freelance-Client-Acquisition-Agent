@@ -113,11 +113,10 @@ class AutonomousCycleTests(TestCase):
 
     def test_supervisor_skips_when_another_cycle_holds_lease(self):
         from .models import SupervisorLease
-        SupervisorLease.objects.create(
-            key="acquisition-supervisor",
-            run_id="other-run",
-            locked_until=timezone.now() + timedelta(minutes=5),
-        )
+        lease, _ = SupervisorLease.objects.get_or_create(key="acquisition-supervisor")
+        lease.run_id = "other-run"
+        lease.locked_until = timezone.now() + timedelta(minutes=5)
+        lease.save(update_fields=["run_id", "locked_until", "updated_at"])
         result = run_autonomous_cycle()
         self.assertTrue(result["skipped"])
         self.assertEqual(
