@@ -83,6 +83,14 @@ def _fresh_qualified_inventory(owner=None):
 def _daily_search_count():
     return ActivityLog.objects.filter(event_type="discovery.search",created_at__date=timezone.localdate()).count()
 
+
+def _daily_manual_search_count():
+    return ActivityLog.objects.filter(
+        event_type="discovery.search",
+        created_at__date=timezone.localdate(),
+        metadata__manual=True,
+    ).count()
+
 def _preview_score(item):
     preview=type("LeadPreview",(),{"title":item.get("title",""),"description":item.get("description",""),"budget_text":item.get("budget_text",""),"technologies":item.get("technologies") or [],"source_url":item.get("source_url","")})()
     return local_lead_score(preview)
@@ -165,13 +173,17 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
             source_findings=[]
     if source=="live" and not (cache_fresh or reused_cache):
         inventory=_fresh_qualified_inventory(owner=owner)
-        if _daily_search_count()>=daily_search_limit(inventory):
+        manual_search = profile_id == "manual"
+        if manual_search:
+            if _daily_manual_search_count() >= settings.DISCOVERY_MANUAL_SEARCHES_PER_DAY:
+                payload=_payload(query,profile_id,cached=True,skip_reason="manual daily web-search budget exhausted",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.skipped",message="Manual discovery search skipped: manual daily web-search budget exhausted.",metadata=payload); return payload
+        elif _daily_search_count()>=daily_search_limit(inventory):
             payload=_payload(query,profile_id,cached=True,skip_reason="dynamic daily web-search budget exhausted",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.skipped",message="Discovery search skipped: dynamic daily web-search budget exhausted.",metadata=payload); return payload
         if inventory>=settings.DISCOVERY_TARGET_QUALIFIED_LEADS:
             payload=_payload(query,profile_id,cached=True,skip_reason="fresh qualified lead inventory is already healthy",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.skipped",message="Discovery search skipped: fresh qualified lead inventory is already healthy.",metadata=payload); return payload
         if not preferred_search_window_open():
             payload=_payload(query,profile_id,cached=True,skip_reason="outside preferred discovery window",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.skipped",message="Discovery search deferred outside the preferred search window.",metadata=payload); return payload
-        ActivityLog.objects.create(event_type="discovery.search",message="Live discovery web search started.",metadata={"profile_id":profile_id,"strategy_id":strategy_id,"query":query,"query_variant":(selected or {}).get("query_variant","base"),"context_size":(selected or {}).get("context_size",settings.DISCOVERY_SEARCH_CONTEXT_SIZE)})
+        ActivityLog.objects.create(event_type="discovery.search",message="Live discovery web search started.",metadata={"profile_id":profile_id,"strategy_id":strategy_id,"query":query,"manual":profile_id=="manual","query_variant":(selected or {}).get("query_variant","base"),"context_size":(selected or {}).get("context_size",settings.DISCOVERY_SEARCH_CONTEXT_SIZE)})
         result=DiscoveryService().discover(query,source,context_size=(selected or {}).get("context_size"),domain_exclusions=(selected or {}).get("domain_exclusions") or domain_exclusions())
         items=result.get("leads",[])
     elif not (cache_fresh or reused_cache):
