@@ -243,4 +243,4 @@ def discover_live(query: str, context_size=None, domain_exclusions="") -> dict[s
         else:
             lead.pop("action_url", None)
         cleaned.append(lead)
-    return {"leads": cleaned, "model": settings.DISCOVERY_MODEL, "source_findings": source_findings}
+    return {"leads": cleaned, "model": settings.DISCOVERY_MODEL, "source_findings": _source_findings(search_response)}
