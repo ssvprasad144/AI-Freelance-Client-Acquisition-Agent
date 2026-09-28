@@ -16,6 +16,12 @@ relevant (boolean), match_score (0-100), service_match (string),
 requirements (array), pain_points (array), recommended_approach (string),
 matching_projects (array), confidence (0-100).
 Use only supplied facts. Never invent clients, outcomes, metrics, integrations, budgets, or requirements.
+Score fit strictly:
+- 90-100: the opportunity's primary work directly matches multiple core services/skills in the supplied developer profile.
+- 75-89: strong direct match with one substantial adjacent area.
+- 60-74: partial match that is still realistically serviceable.
+- below 60: weak, generic, or mostly adjacent match.
+Do not award a high score merely because a generic technology keyword appears. The client's primary deliverable must align with the developer's actual services and projects.
 Be concise.
 """
 
