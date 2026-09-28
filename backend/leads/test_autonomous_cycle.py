@@ -82,3 +82,28 @@ class AutonomousCycleTests(TestCase):
             ).count(),
             1,
         )
+
+
+    def test_low_score_analysis_cannot_be_auto_qualified(self):
+        from .models import Lead, LeadAnalysis
+        lead = Lead.objects.create(
+            owner=self.user,
+            title="Poor fit",
+            description="Unrelated work",
+            source_url="https://example.com/poor-fit",
+            status="new",
+        )
+        LeadAnalysis.objects.create(
+            lead=lead,
+            relevant=False,
+            match_score=10,
+            confidence=90,
+        )
+        from .acquisition_orchestrator import ensure_opportunity
+        opportunity = ensure_opportunity(lead)
+        self.assertEqual(opportunity.recommended_action, "review")
+        with self.assertRaises(ValueError):
+            from .acquisition_orchestrator import execute_action
+            execute_action(opportunity, "qualify", mode="automatic")
+        lead.refresh_from_db()
+        self.assertEqual(lead.status, "new")

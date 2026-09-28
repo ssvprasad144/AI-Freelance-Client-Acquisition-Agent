@@ -38,7 +38,12 @@ def next_action(lead):
     if lead.status=="proposal" and lead.proposals.filter(status="approved").exists():
         if lead.outreach_plans.filter(status__in=["draft","approved"]).exists(): action="review"; category="manual_review"
         else: action="plan_outreach"; category="outreach"
-    if lead.status=="new" and getattr(lead,"analysis",None): action="qualify"
+    if lead.status=="new" and getattr(lead,"analysis",None):
+        analysis = lead.analysis
+        if analysis.relevant and analysis.match_score >= settings.QUALIFICATION_MIN_SCORE:
+            action="qualify"
+        else:
+            action="review"; category="manual_review"
     return {"action":action,"category":category}
 
 def ensure_opportunity(lead):
@@ -93,7 +98,10 @@ def execute_action(opportunity,action,mode="approval_required",approved=False):
         if mode=="automatic" and action in {"approve_proposal","book_meeting"}:
             raise ValueError("This action requires explicit human approval.")
         if action=="qualify":
-            if not lead.analysis_id: raise ValueError("Analyze the lead before qualification.")
+            if not lead.analysis_id:
+                raise ValueError("Analyze the lead before qualification.")
+            if not lead.analysis.relevant or lead.analysis.match_score < settings.QUALIFICATION_MIN_SCORE:
+                raise ValueError("Lead does not meet the qualification threshold.")
             lead.status="qualified"; lead.save(update_fields=["status","updated_at"])
         elif action=="generate_proposal":
             if not lead.analysis_id: raise ValueError("Analyze the lead before proposal generation.")
