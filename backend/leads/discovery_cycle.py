@@ -163,7 +163,7 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
             cache_fresh=False
             reused_cache=None
             source_findings=[]
-    elif source=="live":
+    if source=="live" and not (cache_fresh or reused_cache):
         inventory=_fresh_qualified_inventory(owner=owner)
         if _daily_search_count()>=daily_search_limit(inventory):
             payload=_payload(query,profile_id,cached=True,skip_reason="dynamic daily web-search budget exhausted",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.skipped",message="Discovery search skipped: dynamic daily web-search budget exhausted.",metadata=payload); return payload
@@ -174,7 +174,7 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
         ActivityLog.objects.create(event_type="discovery.search",message="Live discovery web search started.",metadata={"profile_id":profile_id,"strategy_id":strategy_id,"query":query,"query_variant":(selected or {}).get("query_variant","base"),"context_size":(selected or {}).get("context_size",settings.DISCOVERY_SEARCH_CONTEXT_SIZE)})
         result=DiscoveryService().discover(query,source,context_size=(selected or {}).get("context_size"),domain_exclusions=(selected or {}).get("domain_exclusions") or domain_exclusions())
         items=result.get("leads",[])
-    else:
+    elif not (cache_fresh or reused_cache):
         result=DiscoveryService().discover(query,source); items=result.get("leads",[])
 
     raw_results=len(items); valid_results=sum(1 for item in items if item.get("title") and item.get("description") and item.get("source_url"))
