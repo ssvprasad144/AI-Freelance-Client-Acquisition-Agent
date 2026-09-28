@@ -154,10 +154,15 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
         source_cache=cache if cache_fresh else reused_cache
         source_findings=list(source_cache.source_findings or [])
         items=list(source_cache.result_payload or [])
-        if not items and cache_fresh:
-            payload=_payload(query,profile_id,source=source,cached=True,skip_reason="fresh query cache",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.cache_hit",message="Discovery query served from freshness cache; no web search performed.",metadata=payload); return payload
-        payload=_payload(query,profile_id,source=source,cached=True,reused=bool(reused_cache),skip_reason="semantic result reuse" if reused_cache else "fresh query cache",strategy_id=strategy_id)
-        ActivityLog.objects.create(event_type="discovery.cache_hit",message="Discovery results reused without a new web search.",metadata=payload)
+        if items:
+            payload=_payload(query,profile_id,source=source,cached=True,reused=bool(reused_cache),skip_reason="semantic result reuse" if reused_cache else "fresh query cache",strategy_id=strategy_id)
+            ActivityLog.objects.create(event_type="discovery.cache_hit",message="Discovery results reused without a new web search.",metadata=payload)
+        else:
+            # An empty live-search cache must never suppress future searches for the full cache TTL.
+            # Treat it as stale so a later run can retry after provider/model/config changes.
+            cache_fresh=False
+            reused_cache=None
+            source_findings=[]
     elif source=="live":
         inventory=_fresh_qualified_inventory(owner=owner)
         if _daily_search_count()>=daily_search_limit(inventory):
