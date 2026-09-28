@@ -2,6 +2,8 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
+from django.utils import timezone
+from datetime import timedelta
 
 from .autonomous_cycle import _run_safe_actions, _should_run_discovery, run_autonomous_cycle
 from .models import ActivityLog, Lead, LeadAnalysis
@@ -107,3 +109,51 @@ class AutonomousCycleTests(TestCase):
             execute_action(opportunity, "qualify", mode="automatic")
         lead.refresh_from_db()
         self.assertEqual(lead.status, "new")
+
+
+    def test_supervisor_skips_when_another_cycle_holds_lease(self):
+        from .models import SupervisorLease
+        SupervisorLease.objects.create(
+            key="acquisition-supervisor",
+            run_id="other-run",
+            locked_until=timezone.now() + timedelta(minutes=5),
+        )
+        result = run_autonomous_cycle()
+        self.assertTrue(result["skipped"])
+        self.assertEqual(
+            ActivityLog.objects.filter(event_type="automation.cycle.started").count(),
+            0,
+        )
+
+    def test_supervisor_releases_lease_after_unexpected_failure(self):
+        from .models import SupervisorLease
+        lease = SupervisorLease.objects.create(key="acquisition-supervisor")
+        with patch(
+            "leads.autonomous_cycle._owners",
+            side_effect=RuntimeError("owner lookup failed"),
+        ):
+            result = run_autonomous_cycle()
+        lease.refresh_from_db()
+        self.assertFalse(lease.locked_until)
+        self.assertEqual(lease.run_id, "")
+        self.assertEqual(len(result["failures"]), 1)
+        self.assertEqual(result["failures"][0]["stage"] if "stage" in result["failures"][0] else "unexpected", "unexpected")
+
+    def test_discovery_failure_does_not_stop_cycle(self):
+        with patch(
+            "leads.autonomous_cycle._should_run_discovery",
+            return_value=True,
+        ), patch(
+            "leads.discovery_cycle.run_discovery_cycle",
+            side_effect=RuntimeError("provider unavailable"),
+        ), patch(
+            "leads.autonomous_cycle.process_due_followups",
+            return_value={"processed": 0, "due": 0, "sent": False},
+        ):
+            result = run_autonomous_cycle()
+        self.assertEqual(len(result["failures"]), 1)
+        self.assertEqual(result["failures"][0]["stage"], "discovery")
+        self.assertEqual(
+            ActivityLog.objects.filter(event_type="automation.cycle.completed").count(),
+            1,
+        )
