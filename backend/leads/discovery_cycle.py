@@ -184,6 +184,11 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
     if owner is None:
         owner = get_user_model().objects.order_by("id").first()
     cycle_started=timezone.now()
+    # Retire previously discovered web leads that are no longer verifiably fresh.
+    stale_cutoff=cycle_started-timezone.timedelta(days=settings.DISCOVERY_MAX_AGE_DAYS)
+    Lead.objects.filter(owner=owner,source="web_search",status__in=["new","qualified"],posted_at__isnull=True).update(status="archived",updated_at=cycle_started)
+    Lead.objects.filter(owner=owner,source="web_search",status__in=["new","qualified"],posted_at__lt=stale_cutoff).update(status="archived",updated_at=cycle_started)
+    Lead.objects.filter(owner=owner,source="web_search",status__in=["new","qualified"],expires_at__lte=cycle_started).update(status="archived",updated_at=cycle_started)
     selected=None
     source_findings=[]
     if not query:
