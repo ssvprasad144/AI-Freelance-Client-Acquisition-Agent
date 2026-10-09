@@ -1,4 +1,6 @@
 from urllib.parse import urlsplit, urlunsplit
+import logging
+import time
 import re
 from django.conf import settings
 from django.contrib.auth import authenticate
@@ -28,6 +30,8 @@ from .meeting_service import sync_meeting_context, apply_meeting_status, apply_m
 from .learning import log_acquisition_event, refresh_learning
 from .acquisition_orchestrator import build_queue, ensure_opportunity, execute_action, recalculate_opportunities
 from .outreach_intelligence import build_outreach_plans, create_plan, channel_metrics, mark_approved
+
+logger = logging.getLogger(__name__)
 
 
 from .revenue_intelligence import upsert_revenue, revenue_metrics, optimization_report
@@ -200,11 +204,29 @@ def run_discovery(request):
     source=str(request.data.get("source") or "live").lower()
     try: limit=min(max(int(request.data.get("limit",settings.DISCOVERY_MAX_RESULTS)),1),settings.DISCOVERY_MAX_RESULTS)
     except (TypeError,ValueError): return Response({"detail":"limit must be an integer."},status=400)
+    started_at = time.monotonic()
     try:
         payload=run_discovery_cycle(query=query,source=source,qualification_limit=limit,profile_id="manual",owner=request.user)
     except (LiveDiscoveryError,DiscoveryError) as exc:
-        return Response({"status":"error","detail":str(exc)},status=502)
-    return Response({"status":"success",**payload})
+        elapsed_ms = round((time.monotonic() - started_at) * 1000)
+        logger.exception(
+            "Discovery request failed (source=%s, model=%s, query_chars=%d, elapsed_ms=%d)",
+            source,
+            getattr(settings, "DISCOVERY_MODEL", "unknown"),
+            len(query),
+        )
+        return Response({"status":"error","detail":str(exc),"elapsed_ms":elapsed_ms},status=502)
+    except Exception:
+        elapsed_ms = round((time.monotonic() - started_at) * 1000)
+        logger.exception(
+            "Unexpected discovery error (source=%s, model=%s, query_chars=%d, elapsed_ms=%d)",
+            source,
+            getattr(settings, "DISCOVERY_MODEL", "unknown"),
+            len(query),
+            elapsed_ms,
+        )
+        return Response({"status":"error","detail":"Unexpected discovery failure. Check backend logs for the traceback.","elapsed_ms":elapsed_ms},status=500)
+    return Response({"status":"success",**payload,"elapsed_ms":round((time.monotonic() - started_at) * 1000)})
 
 @api_view(["GET"])
 def replies(request): return _paginate(request,Reply.objects.filter(lead__owner=request.user).select_related("lead").order_by("-created_at"),ReplySerializer)
