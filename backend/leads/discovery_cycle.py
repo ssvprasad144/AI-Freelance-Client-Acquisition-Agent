@@ -121,8 +121,9 @@ def _fresh_actionable_items(items):
         if expires and expires <= now:
             rejected+=1
             continue
-        item["posted_at"]=posted
-        item["expires_at"]=expires
+        # DiscoveryQueryCache.result_payload is a JSONField; keep timestamps JSON-safe.
+        item["posted_at"]=posted.isoformat()
+        item["expires_at"]=expires.isoformat() if expires else None
         fresh.append(item)
     return fresh,rejected
 
