@@ -222,7 +222,9 @@ def run_discovery_cycle(query=None,source="live",qualification_limit=None,profil
             payload=_payload(query,profile_id,cached=True,skip_reason="dynamic daily web-search budget exhausted",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.skipped",message="Discovery search skipped: dynamic daily web-search budget exhausted.",metadata=payload); return payload
         if inventory>=settings.DISCOVERY_TARGET_QUALIFIED_LEADS:
             payload=_payload(query,profile_id,cached=True,skip_reason="fresh qualified lead inventory is already healthy",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.skipped",message="Discovery search skipped: fresh qualified lead inventory is already healthy.",metadata=payload); return payload
-        if not preferred_search_window_open():
+        # Manual user-triggered searches should run immediately; preferred time
+        # windows are for automated discovery cycles only.
+        if not manual_search and not preferred_search_window_open():
             payload=_payload(query,profile_id,cached=True,skip_reason="outside preferred discovery window",strategy_id=strategy_id); ActivityLog.objects.create(event_type="discovery.skipped",message="Discovery search deferred outside the preferred search window.",metadata=payload); return payload
         ActivityLog.objects.create(event_type="discovery.search",message="Live discovery web search started.",metadata={"profile_id":profile_id,"strategy_id":strategy_id,"query":query,"manual":profile_id=="manual","query_variant":(selected or {}).get("query_variant","base"),"context_size":(selected or {}).get("context_size",settings.DISCOVERY_SEARCH_CONTEXT_SIZE)})
         result=DiscoveryService().discover(query,source,context_size=(selected or {}).get("context_size"),domain_exclusions=(selected or {}).get("domain_exclusions") or domain_exclusions())
