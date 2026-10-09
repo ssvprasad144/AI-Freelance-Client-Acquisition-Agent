@@ -28,6 +28,8 @@ class EndToEndPipelineTests(TestCase):
                 "company": "Example Co",
                 "source": "direct",
                 "technologies": ["Django", "Python"],
+                # Live discovery now rejects results without a trustworthy recent posting date.
+                "posted_at": timezone.now().isoformat(),
             }],
         }
         analyze.return_value = {
@@ -74,6 +76,8 @@ class EndToEndPipelineTests(TestCase):
                 "title": "Private target",
                 "description": "Should never be stored.",
                 "source_url": "http://127.0.0.1/admin",
+                # Keep the fixture fresh so this test reaches the unsafe-URL validation gate.
+                "posted_at": timezone.now().isoformat(),
             }],
         }
         from .discovery_cycle import run_discovery_cycle
