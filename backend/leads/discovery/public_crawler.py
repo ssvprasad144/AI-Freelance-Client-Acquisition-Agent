@@ -2,12 +2,15 @@ import ipaddress
 import json
 import re
 import socket
+import http.client
+import ssl
 import time
 from collections import defaultdict
 from html.parser import HTMLParser
 from urllib.robotparser import RobotFileParser
 from urllib.parse import urljoin, urlparse
-from urllib.request import Request, build_opener, HTTPRedirectHandler
+from urllib.request import Request, build_opener, HTTPRedirectHandler, HTTPHandler, HTTPSHandler, ProxyHandler
+from urllib.error import HTTPError
 from django.conf import settings
 
 
@@ -76,11 +79,44 @@ def _public_host(host):
         infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
         raise CrawlError("Hostname could not be resolved.") from exc
+    addresses = []
     for info in infos:
         addr = ipaddress.ip_address(info[4][0])
-        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved or addr.is_multicast or addr.is_unspecified:
+        if not addr.is_global or addr.is_multicast or addr.is_reserved:
             raise CrawlError("Private or non-public destination blocked.")
-    return True
+        addresses.append(str(addr))
+    if not addresses:
+        raise CrawlError("No public address.")
+    return addresses
+
+
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    def connect(self):
+        self.sock = socket.create_connection((_public_host(self.host)[0], self.port), self.timeout)
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def connect(self):
+        raw = socket.create_connection((_public_host(self.host)[0], self.port), self.timeout)
+        try:
+            self.sock = self._context.wrap_socket(raw, server_hostname=self.host)
+        except Exception:
+            raw.close()
+            raise
+
+
+class _PinnedHTTPHandler(HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(_PinnedHTTPConnection, req)
+
+
+class _PinnedHTTPSHandler(HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_PinnedHTTPSConnection, req, context=ssl.create_default_context())
+
+
+def _opener():
+    return build_opener(ProxyHandler({}), _NoRedirect(), _PinnedHTTPHandler(), _PinnedHTTPSHandler())
 
 
 def _validate_url(url):
@@ -89,6 +125,8 @@ def _validate_url(url):
         raise CrawlError("Only public HTTP(S) URLs are allowed.")
     if p.username or p.password:
         raise CrawlError("URLs containing credentials are blocked.")
+    if p.port not in (None, 80 if p.scheme == "http" else 443):
+        raise CrawlError("Nonstandard port blocked.")
     _public_host(p.hostname)
     return p
 
@@ -98,7 +136,7 @@ def _robots_allowed(url):
     robots_url = f"{p.scheme}://{p.netloc}/robots.txt"
     try:
         req = Request(robots_url, headers={"User-Agent": settings.CRAWLER_USER_AGENT})
-        with build_opener(_NoRedirect()).open(req, timeout=settings.CRAWLER_TIMEOUT_SECONDS) as response:
+        with _opener().open(req, timeout=settings.CRAWLER_TIMEOUT_SECONDS) as response:
             if response.status >= 400:
                 return True
             body = response.read(settings.CRAWLER_MAX_ROBOTS_BYTES).decode("utf-8", "replace")
@@ -106,6 +144,8 @@ def _robots_allowed(url):
         parser.set_url(robots_url)
         parser.parse(body.splitlines())
         return parser.can_fetch(settings.CRAWLER_USER_AGENT, url)
+    except HTTPError as exc:
+        return exc.code == 404
     except Exception:
         return bool(settings.CRAWLER_ALLOW_ROBOTS_FAILURE)
 
@@ -127,10 +167,10 @@ class PublicWebCrawler:
         self.domain_counts[host] += 1
 
     def _allowed(self, url):
-        host = urlparse(url).hostname.lower()
-        if host not in self.robots_cache:
-            self.robots_cache[host] = _robots_allowed(url)
-        return self.robots_cache[host]
+        # robots decisions are path-specific, not hostname-wide.
+        if url not in self.robots_cache:
+            self.robots_cache[url] = _robots_allowed(url)
+        return self.robots_cache[url]
 
     def fetch(self, url, redirects=0):
         if not settings.CRAWLER_ENABLED:
@@ -146,9 +186,15 @@ class PublicWebCrawler:
                 "Accept": "text/html,application/xhtml+xml,application/json;q=0.9",
             },
         )
-        opener = build_opener(_NoRedirect())
+        opener = _opener()
         try:
             response = opener.open(req, timeout=settings.CRAWLER_TIMEOUT_SECONDS)
+        except HTTPError as exc:
+            if 300 <= exc.code < 400:
+                response = exc
+            else:
+                exc.close()
+                raise CrawlError("HTTP fetch failed.") from exc
         except Exception as exc:
             raise CrawlError(f"Fetch failed: {type(exc).__name__}") from exc
         with response:
