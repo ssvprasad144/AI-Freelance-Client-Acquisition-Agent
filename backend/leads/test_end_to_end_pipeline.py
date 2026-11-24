@@ -2,13 +2,14 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from .models import AcquisitionOpportunity, ActivityLog, Client, ClientIntelligence, FollowUp, FollowUpSequence, Lead
 
 
+@override_settings(CRAWLER_ENABLED=False, DISCOVERY_PREFERRED_HOURS_ENABLED=False)
 class EndToEndPipelineTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username="pipeline-owner", password="pass12345")
@@ -25,6 +26,7 @@ class EndToEndPipelineTests(TestCase):
                 "title": "Django automation project",
                 "description": "Build a Django API and automation platform.",
                 "source_url": "https://example.com/projects/1",
+                "posted_at": timezone.now().isoformat(),
                 "company": "Example Co",
                 "source": "direct",
                 "technologies": ["Django", "Python"],
@@ -74,6 +76,7 @@ class EndToEndPipelineTests(TestCase):
                 "title": "Private target",
                 "description": "Should never be stored.",
                 "source_url": "http://127.0.0.1/admin",
+                "posted_at": timezone.now().isoformat(),
             }],
         }
         from .discovery_cycle import run_discovery_cycle
