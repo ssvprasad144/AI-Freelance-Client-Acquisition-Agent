@@ -7,10 +7,11 @@ from .models import ActivityLog, FollowUp, FollowUpSequence, Outreach
 from .followup_intelligence import cancel_if_stopped
 
 
-def recover_stale_outbound_claims(max_age_minutes=30):
+def recover_stale_outbound_claims(max_age_minutes=30, owner=None):
+    scope = {"lead__owner": owner} if owner is not None else {}
     cutoff = timezone.now() - timedelta(minutes=max_age_minutes)
-    stale_followup_ids=list(FollowUp.objects.filter(status="sending", updated_at__lt=cutoff).values_list("id", flat=True))
-    stale_outreach_ids=list(Outreach.objects.filter(status="sending", updated_at__lt=cutoff).values_list("id", flat=True))
+    stale_followup_ids=list(FollowUp.objects.filter(status="sending", updated_at__lt=cutoff, **scope).values_list("id", flat=True))
+    stale_outreach_ids=list(Outreach.objects.filter(status="sending", updated_at__lt=cutoff, **scope).values_list("id", flat=True))
     recovered_followups=FollowUp.objects.filter(pk__in=stale_followup_ids, status="sending").update(status="send_uncertain")
     recovered_outreach=Outreach.objects.filter(pk__in=stale_outreach_ids, status="sending").update(status="send_uncertain")
     for item in FollowUp.objects.filter(pk__in=stale_followup_ids).select_related("lead")[:100]:
@@ -19,15 +20,17 @@ def recover_stale_outbound_claims(max_age_minutes=30):
         ActivityLog.objects.create(lead=item.lead,event_type="outreach.recovered",message="Outreach delivery became ambiguous after timeout; automatic retry is blocked pending reconciliation.",metadata={"outreach_id":item.id,"max_age_minutes":max_age_minutes,"requires_reconciliation":True})
     return {"followups": recovered_followups, "outreach": recovered_outreach}
 
-def process_due_followups():
+def process_due_followups(owner=None):
+    scope = {"lead__owner": owner} if owner is not None else {}
     now = timezone.now()
-    recovery = recover_stale_outbound_claims()
-    for sequence in FollowUpSequence.objects.filter(status="active").select_related("lead"):
+    recovery = recover_stale_outbound_claims(owner=owner)
+    for sequence in FollowUpSequence.objects.filter(status="active", **scope).select_related("lead"):
         cancel_if_stopped(sequence)
     candidate_ids = list(
         FollowUp.objects.filter(
             status="approved",
             scheduled_at__lte=now,
+                **scope,
         ).order_by("scheduled_at").values_list("id", flat=True)
     )
     processed = 0
@@ -38,6 +41,7 @@ def process_due_followups():
                 pk=followup_id,
                 status="approved",
                 scheduled_at__lte=now,
+                **scope,
             ).update(status="due")
 
             if not changed:
@@ -57,7 +61,7 @@ def process_due_followups():
 
     return {
         "processed": processed,
-        "due": FollowUp.objects.filter(status="due").count(),
+        "due": FollowUp.objects.filter(status="due", **scope).count(),
         "sent": False,
         "recovered": recovery,
     }

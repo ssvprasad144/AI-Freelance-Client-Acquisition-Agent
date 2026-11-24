@@ -6,7 +6,7 @@ export function getToken(){return localStorage.getItem(tokenKey)||""}
 export function clearToken(){localStorage.removeItem(tokenKey)}
 async function request(path,options={}){
   const headers={"Content-Type":"application/json",...(options.headers||{})};
-  const token=getToken(); if(token) headers.Authorization="Token "+token;
+  const token=getToken(); if(token && path!=="/auth/login/") headers.Authorization="Token "+token;
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),Number(options.timeoutMs||30000));
   const {timeoutMs,...fetchOptions}=options;
@@ -29,7 +29,7 @@ async function request(path,options={}){
 function collection(data){return Array.isArray(data)?data:(data?.results||[])}
 export const api={
  login:async(username,password)=>{const data=await request("/auth/login/",{method:"POST",body:JSON.stringify({username,password})});localStorage.setItem(tokenKey,data.token);return data},
- me:()=>request("/auth/me/"),logout:()=>clearToken(),health:()=>request("/health/"),
+ me:()=>request("/auth/me/"),logout:async()=>{try{await request("/auth/logout/",{method:"POST"})}finally{clearToken()}},health:()=>request("/health/"),
  dashboard:()=>request("/dashboard/"),analytics:()=>request("/analytics/"),
  clients:async()=>collection(await request("/clients/")),client:id=>request("/clients/"+id+"/"),clientIntelligence:id=>request("/clients/"+id+"/intelligence/",{method:"POST"}),
  meetings:async()=>collection(await request("/meetings/")),createMeeting:data=>request("/meetings/create/",{method:"POST",body:JSON.stringify(data)}),updateMeeting:(id,data)=>request("/meetings/"+id+"/",{method:"PATCH",body:JSON.stringify(data)}),

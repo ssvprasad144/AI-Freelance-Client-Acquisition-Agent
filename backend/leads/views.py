@@ -9,7 +9,7 @@ from django.http import JsonResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.authtoken.models import Token
-from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
+from rest_framework.decorators import action, api_view, permission_classes, throttle_classes, authentication_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from .throttles import AIThrottle, DiscoveryThrottle, LoginThrottle
@@ -97,12 +97,21 @@ def health(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@authentication_classes([])
 @throttle_classes([LoginThrottle])
 def login(request):
     user=authenticate(request,username=str(request.data.get("username") or "").strip(),password=str(request.data.get("password") or ""))
     if not user:return Response({"detail":"Invalid username or password."},status=400)
-    token,_=Token.objects.get_or_create(user=user)
+    with transaction.atomic():
+        type(user).objects.select_for_update().get(pk=user.pk)
+        Token.objects.filter(user=user).delete()
+        token=Token.objects.create(user=user)
     return Response({"token":token.key,"user":{"id":user.id,"username":user.username,"is_staff":user.is_staff}})
+
+@api_view(["POST"])
+def logout(request):
+    request.auth.delete()
+    return Response(status=204)
 
 @api_view(["GET"])
 def me(request): return Response({"id":request.user.id,"username":request.user.username,"is_staff":request.user.is_staff})
@@ -180,7 +189,7 @@ def create_followup(request,pk=None):
     return Response(FollowUpSerializer(followup).data)
 
 @api_view(["POST"])
-def process_due_followups(request): return Response(process_due_followups_service())
+def process_due_followups(request): return Response(process_due_followups_service(owner=request.user))
 @api_view(["GET"])
 def due_followups(request): return _paginate(request,FollowUp.objects.filter(lead__owner=request.user,status="due").select_related("lead").order_by("scheduled_at"),FollowUpSerializer)
 @api_view(["GET"])
@@ -215,7 +224,7 @@ def run_discovery(request):
             getattr(settings, "DISCOVERY_MODEL", "unknown"),
             len(query),
         )
-        return Response({"status":"error","detail":str(exc),"elapsed_ms":elapsed_ms},status=502)
+        return Response({"status":"error","detail":"Discovery temporarily unavailable.","elapsed_ms":elapsed_ms},status=502)
     except Exception:
         elapsed_ms = round((time.monotonic() - started_at) * 1000)
         logger.exception(
@@ -232,6 +241,7 @@ def run_discovery(request):
 def replies(request): return _paginate(request,Reply.objects.filter(lead__owner=request.user).select_related("lead").order_by("-created_at"),ReplySerializer)
 
 @api_view(["POST"])
+@throttle_classes([AIThrottle])
 def create_reply(request,pk):
     lead=_owned_lead(request, pk)
     if not lead:return Response({"detail":"Lead not found."},status=404)
@@ -242,7 +252,7 @@ def create_reply(request,pk):
         classification=classify_reply(reply)
         reply.sentiment=classification.get("sentiment",""); reply.intent=classification.get("intent",""); reply.urgency=classification.get("urgency",""); reply.confidence=int(classification.get("confidence",0) or 0); reply.extracted_questions=classification.get("extracted_questions",[]) or []; reply.recommended_action=classification.get("recommended_action",""); reply.suggested_response=classification.get("suggested_response",""); reply.next_action=classification.get("next_action",""); reply.save(update_fields=["sentiment","intent","urgency","confidence","extracted_questions","recommended_action","suggested_response","next_action"])
     except Exception as exc:
-        classification={"recommended_action":"Review reply manually.","error":str(exc)}
+        classification={"recommended_action":"Review reply manually.","error":"Reply analysis unavailable."}
     lead.status="replied"; lead.save(update_fields=["status","updated_at"])
     client,contact=sync_lead_client(lead)
     if client: record_message(client,lead,reply.channel,"inbound",message,{"reply_id":reply.id},contact)
@@ -330,16 +340,17 @@ def edit_proposal(request, pk):
     number=proposal.versions.order_by("-version_number").values_list("version_number",flat=True).first() or 0
     version=proposal.versions.create(version_number=number+1,content=content,source="user",instruction="Manual workspace edit")
     proposal.current_version=version.version_number; proposal.status="draft"; proposal.save(update_fields=["current_version","status","updated_at"])
-    proposal.outreach.update(message=content,status="draft")
+    proposal.outreach.filter(status__in=["draft","approved","opened"]).update(message=content,status="draft")
     return Response({**ProposalSerializer(proposal).data,"current_content":content})
 
 @api_view(["POST"])
+@throttle_classes([AIThrottle])
 def revise_proposal_view(request, pk):
     proposal=Proposal.objects.filter(lead__owner=request.user,pk=pk).first()
     if not proposal: return Response({"detail":"Proposal not found."},status=404)
     try: version=revise_proposal(proposal,str(request.data.get("instruction") or ""))
     except ValueError as exc: return Response({"detail":str(exc)},status=400)
-    proposal.outreach.update(message=version.content,status="draft")
+    proposal.outreach.filter(status__in=["draft","approved","opened"]).update(message=version.content,status="draft")
     return Response({**ProposalSerializer(proposal).data,"current_content":version.content})
 
 @api_view(["POST"])
@@ -348,7 +359,7 @@ def restore_proposal_version(request, pk):
     if not proposal: return Response({"detail":"Proposal not found."},status=404)
     try: version=restore_version(proposal,int(request.data.get("version_number")))
     except (ValueError,TypeError): return Response({"detail":"Valid version_number is required."},status=400)
-    proposal.outreach.update(message=version.content,status="draft")
+    proposal.outreach.filter(status__in=["draft","approved","opened"]).update(message=version.content,status="draft")
     return Response({**ProposalSerializer(proposal).data,"current_content":version.content})
 
 @api_view(["GET"])
@@ -394,7 +405,7 @@ def analytics(request):
 def send_followup(request,pk):
     followup=FollowUp.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
     if not followup: return Response({"detail":"Follow-up not found."},status=404)
-    claimed=FollowUp.objects.filter(pk=pk,lead__owner=request.user,status="due").update(status="sending")
+    claimed=FollowUp.objects.filter(pk=pk,lead__owner=request.user,status="due").update(status="sending",updated_at=timezone.now())
     if not claimed:
         return Response({"detail":"Follow-up is not due or is already being/sent."},status=409)
     followup.refresh_from_db()
@@ -406,14 +417,14 @@ def send_followup(request,pk):
         return Response({"detail":str(exc),"sent":False},status=400)
     except Exception as exc:
         followup.status="send_uncertain"; followup.save(update_fields=["status"])
-        ActivityLog.objects.create(lead=followup.lead,event_type="followup.error",message="Configured follow-up provider failed after an ambiguous delivery attempt; automatic retry is blocked.",metadata={"followup_id":followup.id,"error":str(exc)[:500],"requires_reconciliation":True})
+        ActivityLog.objects.create(lead=followup.lead,event_type="followup.error",message="Configured follow-up provider failed after an ambiguous delivery attempt; automatic retry is blocked.",metadata={"followup_id":followup.id,"error":type(exc).__name__,"requires_reconciliation":True})
         return Response({"detail":"Outbound provider failed; delivery status is uncertain and requires reconciliation.","sent":False},status=502)
 
 @api_view(["POST"])
 def send_outreach(request,pk):
     outreach=Outreach.objects.select_related("lead").filter(lead__owner=request.user,pk=pk).first()
     if not outreach: return Response({"detail":"Outreach not found."},status=404)
-    claimed=Outreach.objects.filter(pk=pk,lead__owner=request.user,status="approved").update(status="sending")
+    claimed=Outreach.objects.filter(pk=pk,lead__owner=request.user,status="approved").update(status="sending",updated_at=timezone.now())
     if not claimed:
         return Response({"detail":"Outreach is not actionable or has already been sent."},status=409)
     outreach.refresh_from_db()
@@ -433,7 +444,7 @@ def send_outreach(request,pk):
         return Response({"detail":str(exc),"sent":False},status=400)
     except Exception as exc:
         outreach.status="send_uncertain"; outreach.save(update_fields=["status"])
-        ActivityLog.objects.create(lead=outreach.lead,event_type="outreach.error",message="Configured outreach provider failed after an ambiguous delivery attempt; automatic retry is blocked.",metadata={"outreach_id":outreach.id,"error":str(exc)[:500],"requires_reconciliation":True})
+        ActivityLog.objects.create(lead=outreach.lead,event_type="outreach.error",message="Configured outreach provider failed after an ambiguous delivery attempt; automatic retry is blocked.",metadata={"outreach_id":outreach.id,"error":type(exc).__name__,"requires_reconciliation":True})
         return Response({"detail":"Outbound provider failed; delivery status is uncertain and requires reconciliation.","sent":False},status=502)
 
 
@@ -463,7 +474,7 @@ def mark_outreach_submitted(request,pk):
     item=Outreach.objects.filter(lead__owner=request.user,pk=pk).first()
     if not item: return Response({"detail":"Outreach not found."},status=404)
     if item.medium=="email": return Response({"detail":"Email outreach must be sent through the email action."},status=400)
-    claimed=Outreach.objects.filter(lead__owner=request.user,pk=pk,status__in=["draft","approved","opened"]).update(status="sending")
+    claimed=Outreach.objects.filter(lead__owner=request.user,pk=pk,status__in=["draft","approved","opened"]).update(status="sending",updated_at=timezone.now())
     if not claimed: return Response({"detail":"Outreach is not actionable or has already been submitted."},status=409)
     item.refresh_from_db()
     item.status="submitted"; item.submitted_at=timezone.now()
@@ -484,7 +495,7 @@ def dashboard(request):
     return JsonResponse({"opportunities":active.count(),"qualified":_owned_leads(request).filter(status="qualified").count(),"proposals":_owned_leads(request).filter(status="proposal").count(),"replies":_owned_leads(request).filter(status="replied").count(),"high_match":LeadAnalysis.objects.filter(lead__owner=request.user,match_score__gte=80).count(),"followups_pending":FollowUp.objects.filter(lead__owner=request.user,status="draft").count(),"followups_upcoming":FollowUp.objects.filter(lead__owner=request.user,status="approved",scheduled_at__gt=now).count(),"followups_due":FollowUp.objects.filter(lead__owner=request.user,status="due").count(),"last_discovery_at":last.created_at if last else None,"last_discovery":last.metadata if last else None})
 
 @api_view(["GET"])
-def activity(request):return _paginate(request,ActivityLog.objects.filter(models.Q(lead__owner=request.user)|models.Q(lead__isnull=True)).order_by("-created_at"),ActivityLogSerializer)
+def activity(request):return _paginate(request,ActivityLog.objects.filter(models.Q(lead__owner=request.user)).order_by("-created_at"),ActivityLogSerializer)
 
 
 @api_view(["GET"])

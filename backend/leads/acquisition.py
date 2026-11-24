@@ -1,5 +1,6 @@
 import json
 import smtplib
+import ssl
 from email.message import EmailMessage
 from django.conf import settings
 from django.utils import timezone
@@ -108,7 +109,7 @@ def send_email(outreach):
     message["To"]=recipient
     message.set_content(outreach.message)
     with smtplib.SMTP(settings.SMTP_HOST,settings.SMTP_PORT,timeout=20) as server:
-        if settings.SMTP_USE_TLS: server.starttls()
+        if settings.SMTP_USE_TLS: server.starttls(context=ssl.create_default_context())
         if settings.SMTP_USERNAME: server.login(settings.SMTP_USERNAME,settings.SMTP_PASSWORD)
         server.send_message(message)
     outreach.status="sent"; outreach.sent_at=timezone.now(); outreach.save(update_fields=["status","sent_at"])
@@ -134,7 +135,7 @@ def send_followup(followup):
     message["To"]=recipient
     message.set_content(followup.message)
     with smtplib.SMTP(settings.SMTP_HOST,settings.SMTP_PORT,timeout=20) as server:
-        if settings.SMTP_USE_TLS: server.starttls()
+        if settings.SMTP_USE_TLS: server.starttls(context=ssl.create_default_context())
         if settings.SMTP_USERNAME: server.login(settings.SMTP_USERNAME,settings.SMTP_PASSWORD)
         server.send_message(message)
     followup.status="sent"; followup.sent_at=timezone.now(); followup.save(update_fields=["status","sent_at"])
